@@ -77,7 +77,7 @@ const useStyles = createStyles(({ css, cssVar }) => ({
   titleRow: css`
     width: 100%;
     min-width: 0;
-    transition: padding-inline-end 0.2s ${cssvar.motioneaseinout};
+    transition: padding-inline-end 0.2s ${cssVar.motionEaseInOut};
   `,
   runningBadge: css`
     pointer-events: none;
