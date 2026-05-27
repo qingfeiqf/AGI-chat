@@ -7,7 +7,6 @@ import { ChevronDown, ListTodoIcon, PlayCircle, Plus } from 'lucide-react';
 import type { Key, MouseEvent } from 'react';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 
 import { taskService } from '@/services/task';
 import { useTaskStore } from '@/store/task';
@@ -22,8 +21,7 @@ import TaskSubtaskProgressTag from '../features/TaskSubtaskProgressTag';
 import TaskTriggerTag from '../features/TaskTriggerTag';
 import { useTaskContextMenuActions } from '../features/useTaskItemContextMenu';
 import AccordionArrowIcon from '../shared/AccordionArrowIcon';
-import { styles } from '../shared/style';
-import { taskDetailPath } from '../shared/taskDetailPath';
+import { useNavigateToTaskDetail } from '../shared/taskDetailPath';
 import RunSubtasksPreview from './RunSubtasksPreview';
 
 type TaskStatus = 'backlog' | 'canceled' | 'completed' | 'failed' | 'paused' | 'running';
@@ -128,7 +126,7 @@ const toTreeData = (tree: TaskTreeNode[]): DataNode[] => {
 const TaskSubtasks = memo(() => {
   const { t } = useTranslation('chat');
   const { message, modal } = App.useApp();
-  const navigate = useNavigate();
+  const navigateToTaskDetail = useNavigateToTaskDetail();
   const agentId = useTaskStore(taskDetailSelectors.activeTaskAgentId);
   const subtasks = useTaskStore(taskDetailSelectors.activeTaskSubtasks);
   const taskId = useTaskStore(taskDetailSelectors.activeTaskId);
@@ -155,9 +153,9 @@ const TaskSubtasks = memo(() => {
   const handleNavigate = useCallback(
     (identifier: string) => {
       const subtask = subtaskMap.get(identifier);
-      navigate(taskDetailPath(identifier, subtask?.assignee?.id ?? undefined));
+      navigateToTaskDetail(identifier, subtask?.assignee?.id ?? undefined);
     },
-    [navigate, subtaskMap],
+    [navigateToTaskDetail, subtaskMap],
   );
 
   const treeData = useMemo(() => {
@@ -314,7 +312,7 @@ const TaskSubtasks = memo(() => {
                   blockNode
                   defaultExpandAll
                   showLine
-                  className={styles.subtaskTree}
+                  className="subtaskTree"
                   switcherIcon={<Icon icon={ChevronDown} size={14} />}
                   treeData={treeData}
                   onRightClick={handleRightClick}

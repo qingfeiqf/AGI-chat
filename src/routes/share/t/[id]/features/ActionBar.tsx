@@ -1,3 +1,4 @@
+import { BRANDING_NAME } from '@lobechat/business-const';
 import { Avatar, Block, Button, Center, Flexbox, Text } from '@lobehub/ui';
 import { HandIcon } from 'lucide-react';
 import { memo, useMemo } from 'react';
@@ -17,7 +18,7 @@ const ActionBar = memo<ActionBarProps>(({ data }) => {
   const isGroup = !!data?.groupId;
   const isInboxAgent = !isGroup && data?.agentMeta?.slug === 'inbox';
   const agentOrGroupTitle =
-    data?.groupMeta?.title || (isInboxAgent ? 'Lobe AI' : data?.agentMeta?.title);
+    data?.groupMeta?.title || (isInboxAgent ? `${BRANDING_NAME} AI` : data?.agentMeta?.title);
   const agentMarketIdentifier = data?.agentMeta?.marketIdentifier;
 
   // Build group avatars for GroupAvatar component

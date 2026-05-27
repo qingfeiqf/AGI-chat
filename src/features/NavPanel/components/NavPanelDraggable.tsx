@@ -3,7 +3,7 @@
 import { DraggablePanel } from '@lobehub/ui';
 import { createStaticStyles, cssVar } from 'antd-style';
 import { type ReactNode } from 'react';
-import { memo, Suspense, useMemo, useRef } from 'react';
+import { memo, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { isDesktop } from '@/const/version';
 import { TOGGLE_BUTTON_ID } from '@/features/NavPanel/ToggleLeftPanelButton';
@@ -13,7 +13,6 @@ import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
 import { isMacOS } from '@/utils/platform';
 
-import { useNavPanelSizeChangeHandler } from '../hooks/useNavPanel';
 import { BACK_BUTTON_ID } from './BackButton';
 
 const draggableStyles = createStaticStyles(({ css, cssVar }) => ({
@@ -34,7 +33,7 @@ const draggableStyles = createStaticStyles(({ css, cssVar }) => ({
     overflow: hidden;
     flex: 1;
 
-    min-width: 240px;
+    min-width: 64px;
     max-width: 100%;
     min-height: 0;
   `,
@@ -46,7 +45,7 @@ const draggableStyles = createStaticStyles(({ css, cssVar }) => ({
     display: flex;
     flex-direction: column;
 
-    min-width: 240px;
+    min-width: 64px;
     max-width: 100%;
     min-height: 100%;
     max-height: 100%;
@@ -111,7 +110,6 @@ export const NavPanelDraggable = memo<NavPanelDraggableProps>(({ activeContent }
     s.toggleLeftPanel,
     systemStatusSelectors.isStatusInit(s),
   ]);
-  const handleSizeChange = useNavPanelSizeChangeHandler();
 
   // Defer DraggablePanel mount until system status hydrates; otherwise defaultSize
   // captures the pre-hydration default and the DOM drifts off NavigationBar's live width.
@@ -119,6 +117,25 @@ export const NavPanelDraggable = memo<NavPanelDraggableProps>(({ activeContent }
   if (defaultWidthRef.current === 0 && isStatusInit) {
     defaultWidthRef.current = systemStatusSelectors.leftPanelWidth(useGlobalStore.getState());
   }
+
+  const storeWidth = useGlobalStore((s) => systemStatusSelectors.leftPanelWidth(s));
+  const [tmpWidth, setTmpWidth] = useState(storeWidth || defaultWidthRef.current || 240);
+
+  // Sync local width with store changes
+  useEffect(() => {
+    if (storeWidth) {
+      setTmpWidth(storeWidth);
+    }
+  }, [storeWidth]);
+
+  const handleSizeChange = (_: any, size: any) => {
+    if (!size) return;
+    const nextWidth = typeof size.width === 'string' ? Number.parseInt(size.width) : size.width;
+    if (!nextWidth || nextWidth < 240) return;
+
+    setTmpWidth(nextWidth);
+    useGlobalStore.getState().updateSystemStatus({ leftPanelWidth: nextWidth });
+  };
 
   const styles = useMemo(
     () => ({
@@ -133,31 +150,32 @@ export const NavPanelDraggable = memo<NavPanelDraggableProps>(({ activeContent }
     return <div aria-hidden style={{ flexShrink: 0, height: '100%', width: pendingWidth }} />;
   }
 
-  const defaultSize = { height: '100%', width: defaultWidthRef.current };
+  const currentWidth = expand ? tmpWidth : 64;
+  const defaultSize = { height: '100%', width: currentWidth };
 
   return (
     <DraggablePanel
       className={draggableStyles.panel}
       classNames={classNames}
       defaultSize={defaultSize}
-      expand={expand}
+      expand={true}
       expandable={false}
-      maxWidth={400}
-      minWidth={240}
+      maxWidth={expand ? 400 : 64}
+      minWidth={expand ? 240 : 64}
       placement="left"
       showBorder={false}
+      size={{ height: '100%', width: currentWidth }}
       style={styles}
       onExpandChange={togglePanel}
-      onSizeDragging={handleSizeChange}
+      onSizeChange={expand ? handleSizeChange : undefined}
     >
       <div className={draggableStyles.inner}>
         <div className={draggableStyles.layer} key={activeContent.key}>
           {activeContent.node}
         </div>
       </div>
-      <Suspense>
-        <Footer />
-      </Suspense>
+
+      <Suspense>{expand && <Footer />}</Suspense>
     </DraggablePanel>
   );
 });

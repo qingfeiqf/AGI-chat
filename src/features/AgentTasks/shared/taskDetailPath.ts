@@ -1,6 +1,9 @@
 import { useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { useOptionalAgentModal } from '@/routes/(main)/home/_layout/Body/Agent/ModalProvider';
+import { useTaskStore } from '@/store/task';
+
 export const taskDetailPath = (taskId: string, agentId?: string) =>
   agentId ? `/agent/${agentId}/task/${taskId}` : `/task/${taskId}`;
 
@@ -16,11 +19,19 @@ export const useTaskDetailPath = () => {
 export const useNavigateToTaskDetail = () => {
   const navigate = useNavigate();
   const getTaskDetailPath = useTaskDetailPath();
+  const agentModal = useOptionalAgentModal();
+  const setActiveTaskId = useTaskStore((s) => s.setActiveTaskId);
 
   return useCallback(
     (taskId: string, agentId?: string) => {
-      navigate(getTaskDetailPath(taskId, agentId));
+      // If we are in the AgentModalProvider and the tasks modal is open (indicated by agentModal being defined)
+      // we can set the activeTaskId in the store instead of navigating.
+      if (agentModal) {
+        setActiveTaskId(taskId);
+      } else {
+        navigate(getTaskDetailPath(taskId, agentId));
+      }
     },
-    [getTaskDetailPath, navigate],
+    [getTaskDetailPath, navigate, agentModal, setActiveTaskId],
   );
 };

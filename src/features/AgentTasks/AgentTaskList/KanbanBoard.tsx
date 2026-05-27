@@ -14,7 +14,6 @@ import { createStaticStyles } from 'antd-style';
 import { ClipboardCheckIcon } from 'lucide-react';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
@@ -24,7 +23,7 @@ import type { TaskGroupItem, TaskListItem } from '@/store/task/slices/list/initi
 
 import { createTaskModal } from '../CreateTaskModal';
 import AgentTaskItem from '../features/AgentTaskItem';
-import { taskDetailPath } from '../shared/taskDetailPath';
+import { useNavigateToTaskDetail } from '../shared/taskDetailPath';
 import HiddenColumnsPanel from './HiddenColumnsPanel';
 import KanbanColumn, { COLUMN_I18N_KEYS, COLUMN_STATUS_ICON, COLUMN_WIDTH } from './KanbanColumn';
 
@@ -75,7 +74,7 @@ const optimisticMoveTask = (
 
 const KanbanBoard = memo(() => {
   const { t } = useTranslation('chat');
-  const navigate = useNavigate();
+  const navigateToTaskDetail = useNavigateToTaskDetail();
 
   const useFetchTaskGroupList = useTaskStore((s) => s.useFetchTaskGroupList);
   useFetchTaskGroupList({ allAgents: true });
@@ -136,11 +135,11 @@ const KanbanBoard = memo(() => {
   const handleCreateTask = useCallback(() => {
     createTaskModal({
       onCreated: (task) => {
-        navigate(taskDetailPath(task.identifier, task.agentId));
+        navigateToTaskDetail(task.identifier, task.agentId);
       },
       showInlineToggle: false,
     });
-  }, [navigate]);
+  }, [navigateToTaskDetail]);
 
   const handleHideColumn = useCallback(
     (columnKey: string) => {

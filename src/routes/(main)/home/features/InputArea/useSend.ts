@@ -8,6 +8,8 @@ import { agentService } from '@/services/agent';
 import { useAgentStore } from '@/store/agent';
 import { useChatStore } from '@/store/chat';
 import { fileChatSelectors, useFileStore } from '@/store/file';
+import { useGlobalStore } from '@/store/global';
+import { systemStatusSelectors } from '@/store/global/selectors';
 import { useHomeStore } from '@/store/home';
 
 import { useResolvedHomeAgentId } from '../AgentSelect/useResolvedHomeAgentId';
@@ -120,18 +122,46 @@ export const useSend = () => {
             // yet — block on the fetch so sendMessage finds a real config below.
             await ensureAgentConfigLoaded(activeAgentId);
 
-            sendMessage({
-              context: { agentId: activeAgentId, isolatedTopic: true },
-              contexts: contextList,
-              editorData,
-              files: fileList,
-              message,
-              onTopicCreated: (topicId) => {
-                router.replace(SESSION_CHAT_TOPIC_URL(activeAgentId, topicId, false));
-              },
-            });
+            // When the sidebar is expanded, we stay in the home layout and let
+            // the inline SidebarTopicList update in place — no route navigation.
+            // When the sidebar is collapsed (compact mode), we navigate normally.
+            const isExpanded = systemStatusSelectors.showLeftPanel(useGlobalStore.getState());
 
-            router.push(SESSION_CHAT_URL(activeAgentId, false));
+            if (isExpanded) {
+              // In expanded sidebar mode, navigate to the agent route for chat content,
+              // BUT the sidebar will still show the Home assistant list (handled by
+              // agent/_layout/Sidebar/index.tsx which renders HomeBody when expanded).
+              // The agent card's inline topic list will update via activeAgentId/activeTopicId.
+              sendMessage({
+                context: { agentId: activeAgentId, isolatedTopic: true },
+                contexts: contextList,
+                editorData,
+                files: fileList,
+                message,
+                onTopicCreated: (topicId) => {
+                  // Switch to the new topic — this sets activeTopicId and triggers
+                  // refreshMessages(), SidebarTopicList shows + highlights the new topic.
+                  useChatStore.getState().switchTopic(topicId);
+                  router.replace(SESSION_CHAT_TOPIC_URL(activeAgentId, topicId, false));
+                },
+              });
+
+              router.push(SESSION_CHAT_URL(activeAgentId, false));
+            } else {
+              // Compact / collapsed sidebar: navigate to the agent chat page
+              sendMessage({
+                context: { agentId: activeAgentId, isolatedTopic: true },
+                contexts: contextList,
+                editorData,
+                files: fileList,
+                message,
+                onTopicCreated: (topicId) => {
+                  router.replace(SESSION_CHAT_TOPIC_URL(activeAgentId, topicId, false));
+                },
+              });
+
+              router.push(SESSION_CHAT_URL(activeAgentId, false));
+            }
           }
         }
       } finally {

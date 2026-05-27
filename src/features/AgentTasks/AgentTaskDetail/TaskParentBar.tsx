@@ -2,7 +2,6 @@ import type { TaskDetailData, TaskDetailSubtask } from '@lobechat/types';
 import { Button, Flexbox, Text } from '@lobehub/ui';
 import { memo, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 
 import { taskService } from '@/services/task';
 import { useTaskStore } from '@/store/task';
@@ -10,7 +9,7 @@ import { taskDetailSelectors } from '@/store/task/selectors';
 
 import TaskStatusIcon from '../features/TaskStatusIcon';
 import TaskSubtaskProgressTag from '../features/TaskSubtaskProgressTag';
-import { taskDetailPath } from '../shared/taskDetailPath';
+import { useNavigateToTaskDetail } from '../shared/taskDetailPath';
 
 const TASK_STATUS_SET = new Set([
   'backlog',
@@ -28,7 +27,7 @@ const toTaskStatus = (status?: string): TaskStatus =>
 
 const TaskParentBar = memo(() => {
   const { t } = useTranslation('chat');
-  const navigate = useNavigate();
+  const navigateToTaskDetail = useNavigateToTaskDetail();
   const parent = useTaskStore(taskDetailSelectors.activeTaskParent);
   const currentIdentifier = useTaskStore(taskDetailSelectors.activeTaskDetail)?.identifier;
 
@@ -82,7 +81,7 @@ const TaskParentBar = memo(() => {
         icon={<TaskStatusIcon size={16} status={parentStatus} />}
         size={'small'}
         type={'text'}
-        onClick={() => navigate(taskDetailPath(parent.identifier, parentAgentId ?? undefined))}
+        onClick={() => navigateToTaskDetail(parent.identifier, parentAgentId ?? undefined)}
       >
         <Text weight={500}>{parent.name}</Text>
       </Button>
@@ -91,7 +90,7 @@ const TaskParentBar = memo(() => {
           currentIdentifier={currentIdentifier}
           subtasks={parentSubtasks}
           onSubtaskClick={(identifier, assigneeAgentId) =>
-            navigate(taskDetailPath(identifier, assigneeAgentId))
+            navigateToTaskDetail(identifier, assigneeAgentId)
           }
         />
       )}

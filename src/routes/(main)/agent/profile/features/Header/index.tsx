@@ -13,6 +13,7 @@ import NavHeader from '@/features/NavHeader';
 import ToggleRightPanelButton from '@/features/RightPanel/ToggleRightPanelButton';
 import { useMarketAuth } from '@/layout/AuthProvider/MarketAuth';
 import { resolveMarketAuthError } from '@/layout/AuthProvider/MarketAuth/errors';
+import { useAgentProfileModalContainer } from '@/routes/(main)/home/_layout/Body/Agent/Modals/AgentProfileModalContext';
 import { useAgentStore } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
 import { useGlobalStore } from '@/store/global';
@@ -28,6 +29,7 @@ import AgentVersionReviewTag, { useVersionReviewStatus } from './AgentVersionRev
 import AutoSaveHint from './AutoSaveHint';
 
 const Header = memo(() => {
+  const modalContainer = useAgentProfileModalContainer();
   const { t } = useTranslation(['setting', 'marketAuth', 'chat']);
   const { modal } = App.useApp();
   const navigate = useNavigate();
@@ -184,7 +186,10 @@ const Header = memo(() => {
         }
         right={
           <Flexbox horizontal align={'center'} gap={4}>
-            <DropdownMenu items={menuItems}>
+            <DropdownMenu
+              items={menuItems}
+              portalProps={modalContainer ? { container: modalContainer } : undefined}
+            >
               <ActionIcon
                 icon={MoreHorizontal}
                 loading={canPublishToCommunity && (isPublishing || isAuthLoading)}

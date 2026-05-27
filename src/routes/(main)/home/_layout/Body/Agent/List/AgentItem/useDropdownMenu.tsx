@@ -17,10 +17,11 @@ import {
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { openEditingPopover } from '@/features/EditingPopover/store';
 import { useGlobalStore } from '@/store/global';
 import { useHomeStore } from '@/store/home';
 import { homeAgentListSelectors } from '@/store/home/selectors';
+
+import { useAgentModal } from '../../ModalProvider';
 
 interface UseAgentDropdownMenuParams {
   anchor: HTMLElement | null;
@@ -43,6 +44,7 @@ export const useAgentDropdownMenu = ({
 }: UseAgentDropdownMenuParams): (() => MenuProps['items']) => {
   const { t } = useTranslation('chat');
   const { modal, message } = App.useApp();
+  const { openAgentProfileModal } = useAgentModal();
 
   const openAgentInNewWindow = useGlobalStore((s) => s.openAgentInNewWindow);
   const sessionCustomGroups = useHomeStore(homeAgentListSelectors.agentGroups, isEqual);
@@ -67,12 +69,10 @@ export const useAgentDropdownMenu = ({
         {
           icon: <Icon icon={Pen} />,
           key: 'rename',
-          label: t('rename', { ns: 'common' }),
+          label: '编辑助手信息',
           onClick: (info: any) => {
             info.domEvent?.stopPropagation();
-            if (anchor) {
-              openEditingPopover({ anchor, avatar, id, title, type: 'agent' });
-            }
+            openAgentProfileModal(id);
           },
         },
         {
@@ -154,6 +154,7 @@ export const useAgentDropdownMenu = ({
       isDefault,
       openCreateGroupModal,
       message,
+      openAgentProfileModal,
     ],
   );
 };

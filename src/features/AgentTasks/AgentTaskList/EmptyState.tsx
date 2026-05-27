@@ -28,7 +28,11 @@ const styles = createStaticStyles(({ css }) => ({
   `,
 }));
 
-const EmptyState = memo(() => {
+interface EmptyStateProps {
+  agentId?: string;
+}
+
+const EmptyState = memo<EmptyStateProps>(({ agentId }) => {
   const { t } = useTranslation('chat');
   const { t: tTaskTemplate } = useTranslation('taskTemplate');
   const templatesState = useDailyBriefRecommendationsUI({ count: EMPTY_STATE_RECOMMEND_COUNT });
@@ -49,7 +53,7 @@ const EmptyState = memo(() => {
         </Text>
       </Flexbox>
 
-      <CreateTaskInlineEntry variant={'hero'} />
+      <CreateTaskInlineEntry agentId={agentId} variant={'hero'} />
 
       {templatesState.mode !== 'hidden' && (
         <Flexbox gap={12}>

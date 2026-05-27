@@ -2,7 +2,6 @@ import { Flexbox, Popover } from '@lobehub/ui';
 import { createStaticStyles } from 'antd-style';
 import { type PropsWithChildren } from 'react';
 import { memo, Suspense, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 import SkeletonList from '@/features/NavPanel/components/SkeletonList';
 import AgentListContent from '@/routes/(main)/home/_layout/Body/Agent/List/AgentListContent';
@@ -17,8 +16,6 @@ const styles = createStaticStyles(({ cssVar, css }) => ({
 }));
 
 const SwitchPanel = memo<PropsWithChildren>(({ children }) => {
-  const navigate = useNavigate();
-
   const content = useMemo(
     () => (
       <Suspense fallback={<SkeletonList rows={6} />}>
@@ -31,12 +28,12 @@ const SwitchPanel = memo<PropsWithChildren>(({ children }) => {
               overflowY: 'auto',
             }}
           >
-            <AgentListContent onMoreClick={() => navigate('/')} />
+            <AgentListContent />
           </Flexbox>
         </AgentModalProvider>
       </Suspense>
     ),
-    [navigate],
+    [],
   );
 
   return (

@@ -1,22 +1,16 @@
 'use client';
 
 import type { MenuProps } from '@lobehub/ui';
-import { Accordion, ActionIcon, DropdownMenu, Flexbox, Icon } from '@lobehub/ui';
-import { EyeOffIcon, MoreHorizontalIcon, SlidersHorizontalIcon } from 'lucide-react';
+import { Accordion, Flexbox, Icon } from '@lobehub/ui';
+import { EyeOffIcon, SlidersHorizontalIcon } from 'lucide-react';
 import type { Key, ReactElement } from 'react';
 import { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom';
 
-import NavItem from '@/features/NavPanel/components/NavItem';
 import { useActiveTabKey } from '@/hooks/useActiveTabKey';
-import type { NavItem as NavItemType } from '@/hooks/useNavLayout';
-import { useNavLayout } from '@/hooks/useNavLayout';
 import Recents from '@/routes/(main)/home/features/Recents';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
-import { SIDEBAR_SPACER_ID } from '@/store/global/selectors/systemStatus';
-import { isModifierClick } from '@/utils/navigation';
 
 import Agent from './Agent';
 import { openCustomizeSidebarModal } from './CustomizeSidebarModal';
@@ -35,6 +29,9 @@ const ACCORDION_KEYS = new Set<string>([GroupKey.Recents, GroupKey.Agent]);
 /** Keys rendered in the header — must be excluded from the body to avoid duplicates
  * when migrating users whose persisted sidebarItems still include them. */
 const HEADER_KEYS = new Set<string>(['home', 'search']);
+
+/** Items now rendered in the footer bar — excluded from the body. */
+const FOOTER_KEYS = new Set<string>(['tasks', 'pages', 'image', 'community', 'resource', 'memory']);
 
 const accordionComponents: Record<string, (key: string) => ReactElement> = {
   [GroupKey.Agent]: (key) => <Agent itemKey={key} key={key} />,
@@ -60,8 +57,6 @@ const mergeSidebarExpandedKeys = (
 const Body = memo(() => {
   const { t } = useTranslation('common');
   const tab = useActiveTabKey();
-  const navigate = useNavigate();
-  const { topNavItems, bottomMenuItems } = useNavLayout();
   const sidebarItems = useGlobalStore(systemStatusSelectors.sidebarItems);
   const sidebarExpandedKeys = useGlobalStore(systemStatusSelectors.sidebarExpandedKeys);
   const hiddenSections = useGlobalStore(systemStatusSelectors.hiddenSidebarSections);
@@ -93,56 +88,6 @@ const Body = memo(() => {
     [t, hideSection],
   );
 
-  // Build a map of nav link items by key
-  const navLinkItems = useMemo(() => {
-    const map = new Map<string, NavItemType>();
-    for (const item of topNavItems) map.set(item.key, item);
-    for (const item of bottomMenuItems) map.set(item.key, item);
-    return map;
-  }, [topNavItems, bottomMenuItems]);
-
-  // Items that must always be visible regardless of hiddenSections
-  const isVisible = useCallback(
-    (k: string) => k === GroupKey.Agent || k === SIDEBAR_SPACER_ID || !hiddenSections.includes(k),
-    [hiddenSections],
-  );
-
-  const visibleKeys = useMemo(
-    () => sidebarItems.filter((k) => !HEADER_KEYS.has(k) && isVisible(k)),
-    [sidebarItems, isVisible],
-  );
-
-  const renderNavLink = useCallback(
-    (key: string) => {
-      const navItem = navLinkItems.get(key);
-      if (!navItem || navItem.hidden) return null;
-      return (
-        <Link
-          key={key}
-          to={navItem.url!}
-          onClick={(e) => {
-            if (isModifierClick(e)) return;
-            e.preventDefault();
-            navigate(navItem.url!);
-          }}
-        >
-          <NavItem
-            active={tab === key}
-            contextMenuItems={getContextMenuItems(key)}
-            icon={navItem.icon}
-            title={navItem.title}
-            actions={
-              <DropdownMenu items={getContextMenuItems(key)} nativeButton={false}>
-                <ActionIcon icon={MoreHorizontalIcon} size={'small'} style={{ flex: 'none' }} />
-              </DropdownMenu>
-            }
-          />
-        </Link>
-      );
-    },
-    [navLinkItems, tab, getContextMenuItems, navigate],
-  );
-
   const handleAccordionExpandedChange = useCallback(
     (accordionKeys: string[], expandedKeys: Key[]) => {
       updateSystemStatus({
@@ -156,55 +101,41 @@ const Body = memo(() => {
     [sidebarExpandedKeys, updateSystemStatus],
   );
 
-  // Render the flat list in `sidebarItems` order: group consecutive accordion
-  // items into an Accordion, interleave non-accordion keys as nav links, and
-  // emit a flex spacer wherever the spacer sentinel appears.
+  // Render only accordion sections — footer items are now in the bottom bar
   const content = useMemo(() => {
     const elements: ReactElement[] = [];
-    let accGroup: { element: ReactElement; key: string }[] = [];
+    const accGroup: { element: ReactElement; key: string }[] = [];
 
-    const flushAccordion = () => {
-      if (accGroup.length > 0) {
-        const accordionKeys = accGroup.map((item) => item.key);
-
-        elements.push(
-          <Accordion
-            expandedKeys={sidebarExpandedKeys}
-            gap={8}
-            key={`acc-${elements.length}`}
-            onExpandedChange={(keys) => handleAccordionExpandedChange(accordionKeys, keys)}
-          >
-            {accGroup.map((item) => item.element)}
-          </Accordion>,
-        );
-        accGroup = [];
-      }
-    };
+    const visibleKeys = sidebarItems.filter(
+      (k) =>
+        !HEADER_KEYS.has(k) &&
+        !FOOTER_KEYS.has(k) &&
+        (k === GroupKey.Agent || !hiddenSections.includes(k)),
+    );
 
     for (const key of visibleKeys) {
-      if (key === SIDEBAR_SPACER_ID) {
-        flushAccordion();
-        elements.push(
-          <div
-            aria-hidden
-            data-sidebar-bottom-spacer
-            key={`spacer-${elements.length}`}
-            style={{ flex: '1 1 0', minHeight: 0 }}
-          />,
-        );
-      } else if (ACCORDION_KEYS.has(key)) {
+      if (ACCORDION_KEYS.has(key)) {
         const comp = accordionComponents[key]?.(key);
         if (comp) accGroup.push({ element: comp, key });
-      } else {
-        flushAccordion();
-        const link = renderNavLink(key);
-        if (link) elements.push(link);
       }
     }
-    flushAccordion();
+
+    if (accGroup.length > 0) {
+      const accordionKeys = accGroup.map((item) => item.key);
+      elements.push(
+        <Accordion
+          expandedKeys={sidebarExpandedKeys}
+          gap={8}
+          key="body-accordion"
+          onExpandedChange={(keys) => handleAccordionExpandedChange(accordionKeys, keys)}
+        >
+          {accGroup.map((item) => item.element)}
+        </Accordion>,
+      );
+    }
 
     return elements;
-  }, [visibleKeys, renderNavLink, sidebarExpandedKeys, handleAccordionExpandedChange]);
+  }, [sidebarItems, hiddenSections, sidebarExpandedKeys, handleAccordionExpandedChange]);
 
   return (
     <Flexbox flex={1} gap={1} paddingInline={4} style={{ minHeight: '100%' }}>

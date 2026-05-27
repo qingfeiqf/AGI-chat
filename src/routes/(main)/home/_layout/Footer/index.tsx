@@ -11,8 +11,8 @@ import {
   CircleHelp,
   Feather,
   FileClockIcon,
-  FlaskConical,
   MessageCircle,
+  PlusIcon,
   Rocket,
   Settings2,
   SettingsIcon,
@@ -24,18 +24,20 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import ChangelogModal from '@/components/ChangelogModal';
 import HighlightNotification from '@/components/HighlightNotification';
+import { getRouteById } from '@/config/routes';
 import { DOCUMENTS_REFER_URL, GITHUB } from '@/const/url';
 import Billboard from '@/features/Billboard';
 import { useBillboardMenuItems } from '@/features/Billboard/MenuItems';
 import { useActiveNavKey } from '@/features/NavPanel';
-import ThemeButton from '@/features/User/UserPanel/ThemeButton';
 import { useFeedbackModal } from '@/hooks/useFeedbackModal';
-import { useNavLayout } from '@/hooks/useNavLayout';
+import { useCreateMenuItems } from '@/routes/(main)/home/_layout/hooks';
+import { useChatStore } from '@/store/chat';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors/systemStatus';
-import { useServerConfigStore } from '@/store/serverConfig';
+import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
 import { userGeneralSettingsSelectors } from '@/store/user/slices/settings/selectors/general';
+import { prefetchRoute } from '@/utils/router';
 
 import { resolveFooterPromotionState } from './promotionPipeline';
 
@@ -65,13 +67,13 @@ const Footer = memo(() => {
   const { t } = useTranslation('common');
   const navigate = useNavigate();
   const { analytics } = useAnalytics();
-  const { footer } = useNavLayout();
   const activeNavKey = useActiveNavKey();
   const isHomeSidebar = activeNavKey === 'home';
   const billboardMenuItems = useBillboardMenuItems();
   const enableAgentOnboarding = useServerConfigStore((s) => s.featureFlags.enableAgentOnboarding);
   const isMobile = useServerConfigStore((s) => !!s.isMobile);
   const serverConfigInit = useServerConfigStore((s) => s.serverConfigInit);
+  const { showMarket, hideGitHub } = useServerConfigStore(featureFlagsSelectors);
   const [agentOnboardingFinished, agentOnboardingStarted, classicOnboardingFinished, isDevMode] =
     useUserStore((s) => [
       !!s.agentOnboarding?.finishedAt,
@@ -141,9 +143,7 @@ const Footer = memo(() => {
   const markNotificationRead = useCallback(
     (slug: string) => {
       const currentSlugs = useGlobalStore.getState().status.readNotificationSlugs || [];
-
       if (currentSlugs.includes(slug)) return;
-
       updateSystemStatus({ readNotificationSlugs: [...currentSlugs, slug] });
     },
     [updateSystemStatus],
@@ -151,7 +151,6 @@ const Footer = memo(() => {
 
   useEffect(() => {
     if (!shouldAutoShowAgentOnboardingPromo) return;
-
     setIsAgentOnboardingCardOpen(true);
     trackPromotionEvent('agent_onboarding_promo_viewed', {
       spm: 'homepage.agent_onboarding_promo.viewed',
@@ -161,7 +160,6 @@ const Footer = memo(() => {
 
   useEffect(() => {
     if (!shouldAutoShowProductHuntCard) return;
-
     setIsProductHuntCardOpen(true);
     trackPromotionEvent('product_hunt_card_viewed', {
       spm: 'homepage.product_hunt.viewed',
@@ -223,6 +221,38 @@ const Footer = memo(() => {
     });
   }, [trackPromotionEvent]);
 
+  // Create agent dropdown
+  const {
+    createAgentMenuItem,
+    createGroupChatMenuItem,
+    createHeterogeneousAgentMenuItems,
+    isLoading,
+  } = useCreateMenuItems();
+
+  const createAgentMenuItems = useMemo<MenuProps['items']>(() => {
+    const heterogeneousItems = createHeterogeneousAgentMenuItems();
+    return [
+      createAgentMenuItem(),
+      createGroupChatMenuItem(),
+      ...(heterogeneousItems.length > 0
+        ? [{ type: 'divider' as const }, ...heterogeneousItems]
+        : []),
+    ];
+  }, [createAgentMenuItem, createGroupChatMenuItem, createHeterogeneousAgentMenuItems]);
+
+  // Navigate to non-assistant route — clear active agent so sidebar collapses
+  const navigateTo = useCallback(
+    (path: string) => {
+      useChatStore.setState(
+        { activeAgentId: undefined, activeTopicId: undefined },
+        false,
+        'Footer/navigate',
+      );
+      navigate(path);
+    },
+    [navigate],
+  );
+
   const activePromotion = useMemo<PromotionCard | undefined>(() => {
     if (isAgentOnboardingCardOpen) {
       return {
@@ -234,7 +264,6 @@ const Footer = memo(() => {
         title: t('agentOnboardingPromo.title'),
       };
     }
-
     if (isProductHuntCardOpen) {
       return {
         actionHref: PRODUCT_HUNT_NOTIFICATION.actionHref,
@@ -246,7 +275,6 @@ const Footer = memo(() => {
         title: t('productHunt.title'),
       };
     }
-
     return undefined;
   }, [
     handleAgentOnboardingAction,
@@ -260,18 +288,12 @@ const Footer = memo(() => {
 
   const helpMenuItems: MenuProps['items'] = useMemo(
     () => [
-      ...(footer.showSettingsEntry && !isDevMode
-        ? [
-            {
-              icon: <Icon icon={Settings2} />,
-              key: 'setting',
-              label: <Link to="/settings">{t('userPanel.setting')}</Link>,
-            },
-            {
-              type: 'divider' as const,
-            },
-          ]
-        : []),
+      {
+        icon: <Icon icon={Settings2} />,
+        key: 'setting',
+        label: <Link to="/settings">{t('userPanel.setting')}</Link>,
+      },
+      { type: 'divider' as const },
       {
         icon: <Icon icon={Book} />,
         key: 'docs',
@@ -296,16 +318,14 @@ const Footer = memo(() => {
           </a>
         ),
       },
-      {
-        type: 'divider',
-      },
+      { type: 'divider' },
       {
         icon: <Icon icon={FileClockIcon} />,
         key: 'changelog',
         label: t('changelog'),
         onClick: handleOpenChangelogModal,
       },
-      ...(footer.layout === 'compact' && !footer.hideGitHub
+      ...(!hideGitHub
         ? [
             {
               icon: <Icon icon={GithubIcon} />,
@@ -315,15 +335,6 @@ const Footer = memo(() => {
                   GitHub
                 </a>
               ),
-            },
-          ]
-        : []),
-      ...(footer.showEvalEntry && footer.layout === 'compact'
-        ? [
-            {
-              icon: <Icon icon={FlaskConical} />,
-              key: 'eval',
-              label: <Link to="/eval">Evaluation Lab</Link>,
             },
           ]
         : []),
@@ -342,13 +353,9 @@ const Footer = memo(() => {
         : []),
     ],
     [
-      footer.showSettingsEntry,
-      footer.layout,
-      footer.hideGitHub,
-      footer.showEvalEntry,
+      hideGitHub,
       handleOpenFeedbackModal,
       handleOpenProductHuntCard,
-      isDevMode,
       shouldShowProductHuntMenuEntry,
       t,
       billboardMenuItems,
@@ -356,47 +363,109 @@ const Footer = memo(() => {
     ],
   );
 
+  // Route configs
+  const pagesRoute = getRouteById('page');
+  const tasksRoute = getRouteById('tasks');
+  const imageRoute = getRouteById('image');
+  const resourceRoute = getRouteById('resource');
+  const communityRoute = getRouteById('community');
+
   return (
     <>
-      {footer.layout === 'expanded' ? (
-        <Flexbox horizontal align={'center'} gap={2} justify={'space-between'} padding={8}>
-          <Flexbox horizontal align={'center'} flex={1} gap={2}>
-            <DropdownMenu items={helpMenuItems} placement="topLeft">
-              <ActionIcon
-                aria-label={t('userPanel.help')}
-                data-billboard-anchor=""
-                icon={CircleHelp}
-                size={16}
-              />
-            </DropdownMenu>
-            {!footer.hideGitHub && (
-              <a aria-label={'GitHub'} href={GITHUB} rel="noopener noreferrer" target={'_blank'}>
-                <ActionIcon icon={GithubIcon} size={16} title={'GitHub'} />
-              </a>
-            )}
-            <Link to="/eval">
-              <ActionIcon icon={FlaskConical} size={16} title="Evaluation Lab" />
-            </Link>
-          </Flexbox>
-          <ThemeButton placement={'topCenter'} size={16} />
-        </Flexbox>
-      ) : (
-        <Flexbox horizontal align={'center'} gap={2} padding={8}>
-          <DropdownMenu items={helpMenuItems} placement="topLeft">
-            <ActionIcon aria-label={t('userPanel.help')} icon={CircleHelp} size={16} />
-          </DropdownMenu>
-          {isDevMode && (
-            <Link to="/settings">
-              <ActionIcon
-                aria-label={t('userPanel.setting')}
-                icon={SettingsIcon}
-                size={16}
-                title={t('userPanel.setting')}
-              />
-            </Link>
-          )}
-        </Flexbox>
-      )}
+      <Flexbox
+        horizontal
+        align="center"
+        justify="space-evenly"
+        padding="6px 8px"
+        style={{ flexWrap: 'nowrap', minWidth: 0 }}
+      >
+        {/* 创建助理 */}
+        <DropdownMenu items={createAgentMenuItems} placement="topLeft">
+          <ActionIcon
+            aria-label={t('newAgent')}
+            icon={PlusIcon}
+            loading={isLoading}
+            size={16}
+            title={t('newAgent')}
+          />
+        </DropdownMenu>
+
+        {/* 文稿 */}
+        {pagesRoute && (
+          <ActionIcon
+            icon={pagesRoute.icon}
+            size={16}
+            title={t('tab.pages')}
+            onClick={() => navigateTo(pagesRoute.path)}
+            onMouseEnter={() => prefetchRoute(pagesRoute.path)}
+          />
+        )}
+
+        {/* 任务 */}
+        {tasksRoute && (
+          <ActionIcon
+            icon={tasksRoute.icon}
+            size={16}
+            title={t('tab.tasks')}
+            onClick={() => navigateTo(tasksRoute.path)}
+            onMouseEnter={() => prefetchRoute(tasksRoute.path)}
+          />
+        )}
+
+        {/* 生成 */}
+        {imageRoute && (
+          <ActionIcon
+            icon={imageRoute.icon}
+            size={16}
+            title={t('tab.generation')}
+            onClick={() => navigateTo(imageRoute.path)}
+            onMouseEnter={() => prefetchRoute(imageRoute.path)}
+          />
+        )}
+
+        {/* 资源 */}
+        {resourceRoute && (
+          <ActionIcon
+            icon={resourceRoute.icon}
+            size={16}
+            title={t('tab.resource')}
+            onClick={() => navigateTo(resourceRoute.path)}
+            onMouseEnter={() => prefetchRoute(resourceRoute.path)}
+          />
+        )}
+
+        {/* 社区 */}
+        {showMarket && communityRoute && (
+          <ActionIcon
+            icon={communityRoute.icon}
+            size={16}
+            title={t('tab.community')}
+            onClick={() => navigateTo(communityRoute.path)}
+            onMouseEnter={() => prefetchRoute(communityRoute.path)}
+          />
+        )}
+
+        {/* 设置 */}
+        <ActionIcon
+          aria-label={t('userPanel.setting')}
+          icon={SettingsIcon}
+          size={16}
+          title={t('userPanel.setting')}
+          onClick={() => navigateTo('/settings')}
+          onMouseEnter={() => prefetchRoute('/settings')}
+        />
+
+        {/* 帮助 */}
+        <DropdownMenu items={helpMenuItems} placement="topLeft">
+          <ActionIcon
+            aria-label={t('userPanel.help')}
+            data-billboard-anchor=""
+            icon={CircleHelp}
+            size={16}
+          />
+        </DropdownMenu>
+      </Flexbox>
+
       <ChangelogModal
         open={isChangelogModalOpen}
         shouldLoad={shouldLoadChangelog}

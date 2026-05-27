@@ -1,33 +1,87 @@
+import { DESKTOP_HEADER_ICON_SMALL_SIZE, SESSION_CHAT_URL } from '@lobechat/const';
 import { HETEROGENEOUS_TYPE_LABELS } from '@lobechat/heterogeneous-agents';
 import { type SidebarAgentItem } from '@lobechat/types';
-import { ActionIcon, Flexbox, Icon, Tag } from '@lobehub/ui';
-import { createStaticStyles, cssVar } from 'antd-style';
-import { Loader2, PinIcon } from 'lucide-react';
-import { type CSSProperties, type DragEvent } from 'react';
-import { memo, useCallback, useMemo, useState } from 'react';
+import { ActionIcon, Flexbox, Icon, Tag, Tooltip } from '@lobehub/ui';
+import { Dropdown } from 'antd';
+import { createStyles } from 'antd-style';
+import {
+  ClipboardList,
+  History,
+  Loader2,
+  MessageSquarePlus,
+  MoreVertical,
+  PinIcon,
+} from 'lucide-react';
+import { type CSSProperties, type DragEvent, memo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
-import NavItem from '@/features/NavPanel/components/NavItem';
 import { usePrefetchAgent } from '@/hooks/usePrefetchAgent';
+import { useAgentStore } from '@/store/agent';
+import { agentSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { operationSelectors } from '@/store/chat/selectors';
 import { useGlobalStore } from '@/store/global';
 import { useHomeStore } from '@/store/home';
+import { prefetchRoute } from '@/utils/router';
 
 import { useAgentModal } from '../../ModalProvider';
-import Actions from '../Item/Actions';
-import { usePreservedAgentUrl } from '../usePreservedAgentUrl';
+import SidebarTopicList from '../SidebarTopicList';
 import Avatar from './Avatar';
 import { useAgentDropdownMenu } from './useDropdownMenu';
 
-const styles = createStaticStyles(({ css, cssVar }) => ({
+const useStyles = createStyles(({ css, cssVar }) => ({
+  outerContainer: css`
+    position: relative;
+
+    margin-block-end: 8px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 12px;
+
+    background: transparent;
+
+    transition: all 0.2s ${cssVar.motionEaseInOut};
+  `,
+  outerContainerActive: css`
+    overflow: hidden;
+    padding: 12px;
+    border: none;
+    background: ${cssVar.colorFillSecondary};
+  `,
+  container: css`
+    cursor: pointer;
+
+    position: relative;
+
+    padding-block: 8px;
+    padding-inline: 12px;
+    border: none;
+    border-radius: 8px;
+
+    background: transparent;
+
+    transition: all 0.2s ${cssVar.motionEaseInOut};
+  `,
+  containerActive: css`
+    padding-inline: 0;
+
+    &:hover {
+      background: transparent;
+    }
+  `,
+  titleRow: css`
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    transition: padding-inline-end 0.2s ease;
+  `,
   badge: css`
     pointer-events: none;
 
     position: absolute;
-    inset-block-end: -3px;
-    inset-inline-end: -3px;
+    inset-block-end: -2px;
+    inset-inline-end: -2px;
 
     display: inline-flex;
     align-items: center;
@@ -50,8 +104,8 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     pointer-events: none;
 
     position: absolute;
-    inset-block-end: -3px;
-    inset-inline-end: -3px;
+    inset-block-end: -2px;
+    inset-inline-end: -2px;
 
     display: inline-flex;
     align-items: center;
@@ -66,9 +120,42 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
 
     background: ${cssVar.colorBgContainer};
   `,
-  wrapper: css`
+  avatarWrapper: css`
     position: relative;
     display: inline-flex;
+  `,
+  title: css`
+    overflow: hidden;
+    flex: 1;
+
+    min-width: 0;
+
+    font-size: 14px;
+    font-weight: 600;
+    color: ${cssVar.colorText};
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `,
+  desc: css`
+    overflow: hidden;
+
+    margin-block-start: 2px;
+
+    font-size: 12px;
+    color: ${cssVar.colorTextDescription};
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `,
+  // Pin / toolbar — absolute positioned inside title-row, aligned with name text
+  actions: css`
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-end: 0;
+    transform: translateY(-50%);
+
+    display: flex;
+    gap: 2px;
+    align-items: center;
   `,
 }));
 
@@ -80,47 +167,62 @@ interface AgentItemProps {
 }
 
 const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) => {
-  const { id, avatar, backgroundColor, title, pinned, heterogeneousType } = item;
+  const {
+    id,
+    avatar,
+    backgroundColor,
+    title,
+    pinned,
+    heterogeneousType,
+    description: itemDescription,
+  } = item;
   const { t } = useTranslation('chat');
-  const { openCreateGroupModal } = useAgentModal();
+  const { openCreateGroupModal, openAgentTasksModal } = useAgentModal();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const openAgentInNewWindow = useGlobalStore((s) => s.openAgentInNewWindow);
 
   const prefetchAgent = usePrefetchAgent();
   const isUpdating = useHomeStore((s) => s.agentUpdatingId === id);
 
-  // Separate loading state from chat store - only show loading for this specific agent
+  const activeAgentId = useChatStore((s) => s.activeAgentId);
+  const switchTopic = useChatStore((s) => s.switchTopic);
+  const openNewTopicOrSaveTopic = useChatStore((s) => s.openNewTopicOrSaveTopic);
+
+  const isSelected = activeAgentId === id;
+  const [showHistory, setShowHistory] = useState(true);
+  const [isHovered, setIsHovered] = useState(false);
+
+  const agentMeta = useAgentStore(agentSelectors.getAgentMetaById(id));
+  const currentAvatar = agentMeta?.avatar || avatar;
+  const currentBackgroundColor = agentMeta?.backgroundColor || backgroundColor;
+  const currentTitle = agentMeta?.title || title;
+  // Prefer agent store description (real-time), fall back to sidebar item's database value
+  const description = agentMeta?.description || itemDescription || '';
+
   const isLoading = useChatStore(operationSelectors.isAgentRunning(id));
   const unreadCount = useChatStore(operationSelectors.agentUnreadCount(id));
+  const displayTitle = currentTitle || t('untitledAgent');
 
-  // Get display title with fallback
-  const displayTitle = title || t('untitledAgent');
-
-  // Heterogeneous agents (Claude Code, Codex, …) show their runtime as a tag
-  // so they stand out from built-in agents in the sidebar.
   const heterogeneousLabel = heterogeneousType
     ? (HETEROGENEOUS_TYPE_LABELS[heterogeneousType] ?? heterogeneousType)
     : null;
 
-  const titleNode = heterogeneousLabel ? (
-    <Flexbox horizontal align="center" gap={4}>
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {displayTitle}
-      </span>
-      <Tag size="small" style={{ flexShrink: 0 }}>
-        {heterogeneousLabel}
-      </Tag>
-    </Flexbox>
-  ) : (
-    displayTitle
-  );
+  // Dynamically calculate hover padding based on visible action icons
+  const hoverIconCount = (pinned ? 1 : 0) + (isSelected ? 2 : 0) + 2; // pin? + history+newTopic? + tasks+more
+  const hoverPaddingRight = hoverIconCount * 28 + (hoverIconCount - 1) * 2 + 8; // icons + gaps + margin
 
-  const agentUrl = usePreservedAgentUrl(id);
+  const navigate = useNavigate();
+  const agentUrl = SESSION_CHAT_URL(id, false);
 
-  // Memoize event handlers
   const handleMouseEnter = useCallback(() => {
+    setIsHovered(true);
     prefetchAgent(id);
-  }, [id, prefetchAgent]);
+    prefetchRoute(agentUrl);
+  }, [id, prefetchAgent, agentUrl]);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsHovered(false);
+  }, []);
 
   const handleDoubleClick = useCallback(() => {
     openAgentInNewWindow(id);
@@ -146,85 +248,154 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
     openCreateGroupModal(id);
   }, [id, openCreateGroupModal]);
 
-  // Memoize pin icon
-  const pinIcon = useMemo(
-    () =>
-      pinned ? (
-        <ActionIcon icon={PinIcon} size={12} style={{ opacity: 0.5, pointerEvents: 'none' }} />
-      ) : undefined,
-    [pinned],
-  );
+  const handleCardClick = useCallback(() => {
+    navigate(agentUrl);
+    switchTopic(null);
+    if (onNavigate) onNavigate();
+  }, [navigate, agentUrl, switchTopic, onNavigate]);
 
-  // Memoize avatar icon (show loader when updating, running spinner or unread badge at bottom-right)
-  const avatarIcon = useMemo(() => {
-    if (isUpdating) {
-      return <Icon spin color={cssVar.colorTextDescription} icon={Loader2} size={18} />;
-    }
-
-    const avatarNode = (
-      <Avatar
-        avatar={typeof avatar === 'string' ? avatar : undefined}
-        avatarBackground={backgroundColor || undefined}
-      />
-    );
-
-    if (isLoading) {
-      return (
-        <span className={styles.wrapper}>
-          {avatarNode}
-          <span className={styles.runningBadge}>
-            <Icon spin icon={Loader2} size={9} />
-          </span>
-        </span>
-      );
-    }
-
-    if (unreadCount > 0) {
-      return (
-        <span className={styles.wrapper}>
-          {avatarNode}
-          <span className={styles.badge}>{unreadCount > 99 ? '99+' : unreadCount}</span>
-        </span>
-      );
-    }
-
-    return avatarNode;
-  }, [isUpdating, isLoading, avatar, backgroundColor, unreadCount]);
+  const handleActionClick = useCallback((e: React.MouseEvent, action: () => void) => {
+    e.stopPropagation();
+    e.preventDefault();
+    action();
+  }, []);
 
   const dropdownMenu = useAgentDropdownMenu({
     anchor,
-    avatar: typeof avatar === 'string' ? avatar : undefined,
-    group: undefined, // TODO: pass group from parent if needed
+    avatar: typeof currentAvatar === 'string' ? currentAvatar : undefined,
+    group: undefined,
     id,
     openCreateGroupModal: handleOpenCreateGroupModal,
     pinned: pinned ?? false,
     title: displayTitle,
   });
 
+  const avatarNode = (
+    <Avatar
+      avatar={typeof currentAvatar === 'string' ? currentAvatar : undefined}
+      avatarBackground={currentBackgroundColor || undefined}
+    />
+  );
+
+  const { styles, cx } = useStyles();
+
   return (
-    <Link
-      aria-label={displayTitle}
+    <Flexbox
+      className={cx(styles.outerContainer, isSelected && styles.outerContainerActive, className)}
+      direction="vertical"
+      draggable={!isUpdating}
       ref={setAnchor}
-      to={agentUrl}
-      onClick={onNavigate}
+      style={style}
+      onDoubleClick={handleDoubleClick}
+      onDragEnd={handleDragEnd}
+      onDragStart={handleDragStart}
       onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
-      <NavItem
-        actions={<Actions dropdownMenu={dropdownMenu} />}
-        className={className}
-        contextMenuItems={dropdownMenu}
-        disabled={isUpdating}
-        draggable={!isUpdating}
-        extra={pinIcon}
-        icon={avatarIcon}
-        key={id}
-        style={style}
-        title={titleNode}
-        onDoubleClick={handleDoubleClick}
-        onDragEnd={handleDragEnd}
-        onDragStart={handleDragStart}
-      />
-    </Link>
+      <Dropdown menu={{ items: dropdownMenu() as any }} trigger={['contextMenu']}>
+        <Flexbox
+          horizontal
+          align="center"
+          className={cx(styles.container, isSelected && styles.containerActive)}
+          justify="space-between"
+          onClick={handleCardClick}
+        >
+          <Flexbox horizontal align="center" gap={10} style={{ minWidth: 0, flex: 1 }}>
+            <span className={styles.avatarWrapper}>
+              {avatarNode}
+              {isLoading ? (
+                <span className={styles.runningBadge}>
+                  <Icon spin icon={Loader2} size={9} />
+                </span>
+              ) : unreadCount > 0 ? (
+                <span className={styles.badge}>{unreadCount > 99 ? '99+' : unreadCount}</span>
+              ) : null}
+            </span>
+
+            <Flexbox direction="vertical" style={{ minWidth: 0, flex: 1 }}>
+              <Flexbox
+                horizontal
+                align="center"
+                className={cx('title-row', styles.titleRow)}
+                gap={4}
+                style={{ paddingRight: isHovered ? hoverPaddingRight : 36 }}
+              >
+                <span className={styles.title}>{displayTitle}</span>
+                {heterogeneousLabel && (
+                  <Tag size="small" style={{ flexShrink: 0, fontSize: 10 }}>
+                    {heterogeneousLabel}
+                  </Tag>
+                )}
+                {/* Actions — absolute inside title-row, aligned with name text */}
+                <div className={styles.actions}>
+                  {pinned && !isHovered && (
+                    <ActionIcon
+                      icon={PinIcon}
+                      size={DESKTOP_HEADER_ICON_SMALL_SIZE}
+                      style={{ opacity: 0.6 }}
+                      title="已置顶"
+                    />
+                  )}
+                  {isHovered && (
+                    <>
+                      {pinned && (
+                        <ActionIcon
+                          icon={PinIcon}
+                          size={DESKTOP_HEADER_ICON_SMALL_SIZE}
+                          style={{ opacity: 0.6 }}
+                          title="已置顶"
+                        />
+                      )}
+                      {isSelected && (
+                        <>
+                          <ActionIcon
+                            icon={History}
+                            size={DESKTOP_HEADER_ICON_SMALL_SIZE}
+                            title="历史话题"
+                            onClick={(e) =>
+                              handleActionClick(e, () => setShowHistory(!showHistory))
+                            }
+                          />
+                          <ActionIcon
+                            icon={MessageSquarePlus}
+                            size={DESKTOP_HEADER_ICON_SMALL_SIZE}
+                            title="新建话题"
+                            onClick={(e) => handleActionClick(e, openNewTopicOrSaveTopic)}
+                          />
+                        </>
+                      )}
+                      <ActionIcon
+                        icon={ClipboardList}
+                        size={DESKTOP_HEADER_ICON_SMALL_SIZE}
+                        title="助手任务"
+                        onClick={(e) => handleActionClick(e, () => openAgentTasksModal(id))}
+                      />
+                      <Dropdown menu={{ items: dropdownMenu() as any }} trigger={['click']}>
+                        <ActionIcon
+                          icon={MoreVertical}
+                          size={DESKTOP_HEADER_ICON_SMALL_SIZE}
+                          title="更多操作"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                          }}
+                        />
+                      </Dropdown>
+                    </>
+                  )}
+                </div>
+              </Flexbox>
+              <Tooltip mouseEnterDelay={1} title={description}>
+                <span className={styles.desc}>{description}</span>
+              </Tooltip>
+            </Flexbox>
+          </Flexbox>
+        </Flexbox>
+      </Dropdown>
+
+      {/* History topic list inline */}
+      {isSelected && showHistory && <SidebarTopicList agentId={id} />}
+    </Flexbox>
   );
 });
 

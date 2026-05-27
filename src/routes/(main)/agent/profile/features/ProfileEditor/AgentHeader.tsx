@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 
 import EmojiPicker from '@/components/EmojiPicker';
 import BackgroundSwatches from '@/features/AgentSetting/AgentMeta/BackgroundSwatches';
+import { useAgentProfileModalContainer } from '@/routes/(main)/home/_layout/Body/Agent/Modals/AgentProfileModalContext';
 import { useAgentStore } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
 import { useFileStore } from '@/store/file';
@@ -22,6 +23,7 @@ const MAX_AVATAR_SIZE = 1024 * 1024; // 1MB limit for server actions
 const AgentHeader = memo(() => {
   const { t } = useTranslation(['setting', 'common']);
   const locale = useGlobalStore(globalGeneralSelectors.currentLanguage);
+  const modalContainer = useAgentProfileModalContainer();
 
   // Get current meta from store
   const meta = useAgentStore(agentSelectors.currentAgentMeta, isEqual);
@@ -144,6 +146,7 @@ const AgentHeader = memo(() => {
         ]}
         popupProps={{
           placement: 'bottomLeft',
+          ...(modalContainer ? { portalProps: { container: modalContainer } as any } : {}),
         }}
         onChange={handleAvatarChange}
         onDelete={handleAvatarDelete}

@@ -1,5 +1,6 @@
 'use client';
 
+import { BRANDING_NAME } from '@lobechat/business-const';
 import { Avatar, Block, Flexbox, Icon, Text } from '@lobehub/ui';
 import { type ItemType } from 'antd/es/menu/interface';
 import { useTheme } from 'antd-style';
@@ -82,7 +83,9 @@ const Content = memo(() => {
     [availableTabs, t],
   );
 
-  const displayTitle = isInbox ? 'Lobe AI' : meta.title || t('defaultSession', { ns: 'common' });
+  const displayTitle = isInbox
+    ? `${BRANDING_NAME} AI`
+    : meta.title || t('defaultSession', { ns: 'common' });
 
   return (
     <Flexbox
