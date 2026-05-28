@@ -6,12 +6,10 @@ import { Breadcrumb } from 'antd';
 import { createStaticStyles } from 'antd-style';
 import { ChevronRightIcon, HomeIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { memo } from 'react';
-import { flushSync } from 'react-dom';
+import { memo, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { DESKTOP_HEADER_ICON_SMALL_SIZE } from '@/const/layoutTokens';
-import { isModifierClick } from '@/utils/navigation';
 
 import BackButton from './components/BackButton';
 import ToggleLeftPanelButton from './ToggleLeftPanelButton';
@@ -33,6 +31,8 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
       color: ${cssVar.colorTextDescription};
     }
     a.${prefixCls}-breadcrumb-link {
+      cursor: pointer;
+
       &:hover {
         color: ${cssVar.colorText};
       }
@@ -62,6 +62,27 @@ const SideBarHeaderLayout = memo<SideBarHeaderLayoutProps>(
     showTogglePanelButton = true,
   }) => {
     const navigate = useNavigate();
+
+    const breadcrumbItems = useMemo(
+      () =>
+        [
+          {
+            href: '/',
+            title: <Icon icon={HomeIcon} />,
+          },
+          ...breadcrumb,
+        ].map((item) => ({
+          ...item,
+          onClick: item.href
+            ? (e: React.MouseEvent<HTMLElement>) => {
+                e.preventDefault();
+                navigate(item.href!);
+              }
+            : undefined,
+        })),
+      [breadcrumb, navigate],
+    );
+
     const leftContent = left ? (
       <Flexbox
         horizontal
@@ -85,26 +106,8 @@ const SideBarHeaderLayout = memo<SideBarHeaderLayoutProps>(
       <Flexbox flex={1} paddingInline={6}>
         <Breadcrumb
           className={styles.breadcrumb}
+          items={breadcrumbItems}
           separator={<Icon icon={ChevronRightIcon} />}
-          items={[
-            {
-              href: '/',
-              title: <Icon icon={HomeIcon} />,
-            },
-            ...breadcrumb,
-          ].map((item) => ({
-            ...item,
-            onClick: (event) => {
-              if (isModifierClick(event)) return;
-              const href = item.href;
-              if (href) {
-                event.preventDefault();
-                event.stopPropagation();
-                // eslint-disable-next-line @eslint-react/dom/no-flush-sync
-                flushSync(() => navigate(href));
-              }
-            },
-          }))}
         />
       </Flexbox>
     );
