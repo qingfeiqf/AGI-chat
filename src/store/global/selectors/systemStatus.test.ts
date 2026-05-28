@@ -134,41 +134,32 @@ describe('systemStatusSelectors', () => {
     });
 
     it('should preserve stored order and inject the spacer before the first bottom item', () => {
-      const stored = [
-        'agent',
-        'recents',
-        'pages',
-        'tasks',
-        'image',
-        'community',
-        'resource',
-        'memory',
-      ];
+      // Old user had tasks/pages at top; after DEFAULT change they become bottom keys.
+      // ensureSpacer inserts the spacer before the first bottom key in stored order.
+      const stored = ['recents', 'agent', 'image', 'resource', 'memory', 'tasks', 'pages'];
       const s: GlobalState = merge(initialState, {
         status: { sidebarItems: stored },
       });
       expect(systemStatusSelectors.sidebarItems(s)).toEqual([
-        'agent',
         'recents',
-        'pages',
-        'tasks',
-        SIDEBAR_SPACER_ID,
+        'agent',
         'image',
-        'community',
         'resource',
         'memory',
+        SIDEBAR_SPACER_ID,
+        'tasks',
+        'pages',
       ]);
     });
 
     it('should respect the stored spacer position', () => {
       const stored = [
-        'pages',
         'recents',
         'agent',
         SIDEBAR_SPACER_ID,
-        'image',
+        'pages',
         'tasks',
-        'community',
+        'image',
         'resource',
         'memory',
       ];
@@ -187,12 +178,13 @@ describe('systemStatusSelectors', () => {
       expect(items.slice(0, 2)).toEqual(['agent', 'recents']);
       // every known key is present
       expect(items).toContain('pages');
-      expect(items).toContain('community');
+      expect(items).toContain('tasks');
+      expect(items).toContain('image');
       expect(items).toContain('resource');
       expect(items).toContain('memory');
       // spacer sits directly before the first bottom-class item
       const firstBottomIdx = items.findIndex((k) =>
-        ['image', 'community', 'resource', 'memory'].includes(k),
+        ['pages', 'tasks', 'image', 'resource', 'memory'].includes(k),
       );
       expect(items[firstBottomIdx - 1]).toBe(SIDEBAR_SPACER_ID);
     });
@@ -204,13 +196,12 @@ describe('systemStatusSelectors', () => {
       const items = systemStatusSelectors.sidebarItems(s);
       // accordion slot in the default list now uses the user's legacy order
       expect(items).toEqual([
-        'tasks',
-        'pages',
         'agent',
         'recents',
         SIDEBAR_SPACER_ID,
+        'pages',
+        'tasks',
         'image',
-        'community',
         'resource',
         'memory',
       ]);

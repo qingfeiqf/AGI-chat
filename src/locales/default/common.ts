@@ -446,6 +446,7 @@ export default {
   'navPanel.moveDown': 'Move Down',
   'navPanel.pinned': 'Pinned',
   'navPanel.moveUp': 'Move Up',
+  'navPanel.newTopic': 'New Topic',
   'navPanel.show': 'Show',
   'navPanel.visible': 'Visible',
   'navPanel.searchAgent': 'Search Agent...',

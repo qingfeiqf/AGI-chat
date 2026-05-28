@@ -4,26 +4,43 @@ import { DEFAULT_AVATAR, DEFAULT_INBOX_AVATAR, SESSION_CHAT_URL } from '@lobecha
 import { ActionIcon, Avatar, Flexbox, Tooltip } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import isEqual from 'fast-deep-equal';
-import {
-  FilePenIcon,
-  Image,
-  LibraryBigIcon,
-  ListTodoIcon,
-  MessageSquarePlus,
-  Settings,
-  ShapesIcon,
-} from 'lucide-react';
+import { MessageSquarePlus, Settings } from 'lucide-react';
 import { memo, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
+import { getRouteById } from '@/config/routes';
 import { DESKTOP_HEADER_ICON_SIZE } from '@/const/layoutTokens';
 import { useActiveTabKey } from '@/hooks/useActiveTabKey';
 import { useAgentStore } from '@/store/agent';
 import { agentSelectors, builtinAgentSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { operationSelectors } from '@/store/chat/selectors';
+import { useGlobalStore } from '@/store/global';
+import { systemStatusSelectors } from '@/store/global/selectors';
+import { SIDEBAR_SPACER_ID } from '@/store/global/selectors/systemStatus';
 
 import { useAgentList } from './Body/Agent/List/useAgentList';
+
+/** Route id → i18n key for compact sidebar tooltip labels */
+const COMPACT_TOOLTIP_KEYS: Record<string, string> = {
+  community: 'tab.community',
+  image: 'tab.generation',
+  memory: 'tab.memory',
+  pages: 'tab.pages',
+  resource: 'tab.resource',
+  tasks: 'tab.tasks',
+};
+
+/** Sidebar item id → route id mapping (sidebar uses 'pages' but route uses 'page') */
+const SIDEBAR_TO_ROUTE_ID: Record<string, string> = {
+  community: 'community',
+  image: 'image',
+  memory: 'memory',
+  pages: 'page',
+  resource: 'resource',
+  tasks: 'tasks',
+};
 
 const useStyles = createStyles(({ css, cssVar }) => ({
   container: css`
@@ -108,6 +125,7 @@ const useStyles = createStyles(({ css, cssVar }) => ({
 
 const CompactSidebar = memo(() => {
   const { styles } = useStyles();
+  const { t } = useTranslation('common');
   const activeAgentId = useChatStore((s) => s.activeAgentId);
   const openNewTopicOrSaveTopic = useChatStore((s) => s.openNewTopicOrSaveTopic);
   const activeTab = useActiveTabKey();
@@ -118,6 +136,17 @@ const CompactSidebar = memo(() => {
   const inboxAgentAvatar = inboxMeta.avatar || DEFAULT_INBOX_AVATAR;
 
   const { customList, pinnedList, defaultList } = useAgentList(false);
+
+  // Read sidebar items and extract bottom items (after spacer) for dynamic icon order
+  const [sidebarItems, hiddenSections] = useGlobalStore((s) => [
+    systemStatusSelectors.sidebarItems(s),
+    systemStatusSelectors.hiddenSidebarSections(s),
+  ]);
+  const bottomItemIds = useMemo(() => {
+    const idx = sidebarItems.indexOf(SIDEBAR_SPACER_ID);
+    if (idx === -1) return [];
+    return sidebarItems.slice(idx + 1).filter((id) => !hiddenSections.includes(id));
+  }, [sidebarItems, hiddenSections]);
 
   // Combine custom, pinned and default agent items into a single flat list
   const agents = useMemo(() => {
@@ -192,7 +221,7 @@ const CompactSidebar = memo(() => {
   return (
     <Flexbox className={styles.container} direction="vertical" gap={12}>
       {/* New Topic Action Icon */}
-      <Tooltip placement="right" title="新建话题">
+      <Tooltip placement="right" title={t('navPanel.newTopic' as any)}>
         <ActionIcon
           icon={MessageSquarePlus}
           size={DESKTOP_HEADER_ICON_SIZE}
@@ -217,54 +246,26 @@ const CompactSidebar = memo(() => {
         })}
       </Flexbox>
 
-      {/* Bottom Menu Buttons */}
+      {/* Bottom Menu Buttons — dynamic order from sidebar customization */}
       <Flexbox className={styles.bottomMenu} direction="vertical">
-        <Tooltip placement="right" title="任务">
-          <Link to="/tasks">
-            <ActionIcon
-              active={activeTab === 'tasks'}
-              icon={ListTodoIcon}
-              size={DESKTOP_HEADER_ICON_SIZE}
-            />
-          </Link>
-        </Tooltip>
-        <Tooltip placement="right" title="文稿">
-          <Link to="/page">
-            <ActionIcon
-              active={activeTab === 'pages'}
-              icon={FilePenIcon}
-              size={DESKTOP_HEADER_ICON_SIZE}
-            />
-          </Link>
-        </Tooltip>
-        <Tooltip placement="right" title="生成">
-          <Link to="/image">
-            <ActionIcon
-              active={activeTab === 'image'}
-              icon={Image}
-              size={DESKTOP_HEADER_ICON_SIZE}
-            />
-          </Link>
-        </Tooltip>
-        <Tooltip placement="right" title="社区">
-          <Link to="/community">
-            <ActionIcon
-              active={activeTab === 'community'}
-              icon={ShapesIcon}
-              size={DESKTOP_HEADER_ICON_SIZE}
-            />
-          </Link>
-        </Tooltip>
-        <Tooltip placement="right" title="资源">
-          <Link to="/resource">
-            <ActionIcon
-              active={activeTab === 'resource'}
-              icon={LibraryBigIcon}
-              size={DESKTOP_HEADER_ICON_SIZE}
-            />
-          </Link>
-        </Tooltip>
-        <Tooltip placement="right" title="设置">
+        {bottomItemIds.map((id) => {
+          const routeId = SIDEBAR_TO_ROUTE_ID[id];
+          const route = routeId ? getRouteById(routeId) : undefined;
+          if (!route) return null;
+
+          const tooltipKey = COMPACT_TOOLTIP_KEYS[id];
+          const label = tooltipKey ? t(tooltipKey as any) : id;
+          const isActive = activeTab === route.id || (route.id === 'page' && activeTab === 'pages');
+
+          return (
+            <Tooltip key={id} placement="right" title={label}>
+              <Link to={route.path}>
+                <ActionIcon active={isActive} icon={route.icon} size={DESKTOP_HEADER_ICON_SIZE} />
+              </Link>
+            </Tooltip>
+          );
+        })}
+        <Tooltip placement="right" title={t('tab.setting' as any)}>
           <Link to="/settings">
             <ActionIcon
               active={activeTab === 'settings'}

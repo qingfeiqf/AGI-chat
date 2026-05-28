@@ -1,8 +1,6 @@
 'use client';
 
 import {
-  closestCenter,
-  type CollisionDetection,
   defaultDropAnimationSideEffects,
   DndContext,
   type DragEndEvent,
@@ -24,7 +22,7 @@ import { ActionIcon, Button, Flexbox, Icon, Text, Tooltip } from '@lobehub/ui';
 import { createModal, type ModalInstance } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cssVar, cx } from 'antd-style';
 import { t } from 'i18next';
-import { ArrowDownToLine, Eye, EyeOff, GripVertical, PinIcon, RotateCcw } from 'lucide-react';
+import { Eye, EyeOff, GripVertical, PinIcon, RotateCcw } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -61,7 +59,23 @@ const ALL_SIDEBAR_ITEMS: SidebarItemConfig[] = [
 const ITEM_MAP = new Map(ALL_SIDEBAR_ITEMS.map((item) => [item.id, item]));
 
 const isAccordionKey = (id: string) => SIDEBAR_ACCORDION_KEYS.has(id);
-const isSpacer = (id: string) => id === SIDEBAR_SPACER_ID;
+
+/** Split items array into top (before spacer) and bottom (after spacer). */
+const splitBySpacer = (items: string[]): { top: string[]; bottom: string[] } => {
+  const idx = items.indexOf(SIDEBAR_SPACER_ID);
+  if (idx === -1) return { bottom: [], top: items };
+  return {
+    bottom: items.slice(idx + 1),
+    top: items.slice(0, idx),
+  };
+};
+
+/** Merge top + spacer + bottom back into a single items array. */
+const mergeWithSpacer = (top: string[], bottom: string[]): string[] => [
+  ...top,
+  SIDEBAR_SPACER_ID,
+  ...bottom,
+];
 
 // ---------------------------------------------------------------------------
 // Styles
@@ -168,43 +182,20 @@ const SortableItem = memo<{
 });
 
 // ---------------------------------------------------------------------------
-// SpacerSortableItem — represents the flex spacer slot; draggable like any
-// other item but rendered as a divider with an "Anchor below to bottom" label.
+// SpacerDivider — non-draggable static divider line
 // ---------------------------------------------------------------------------
 
-const SpacerSortableItem = memo(() => {
+const SpacerDivider = memo(() => {
   const { t } = useTranslation('common');
-  const {
-    attributes,
-    isDragging,
-    listeners,
-    setActivatorNodeRef,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({ id: SIDEBAR_SPACER_ID });
 
   return (
     <Flexbox
       horizontal
       align={'center'}
-      className={isDragging ? cx(styles.item, styles.itemDragging) : styles.item}
+      className={styles.item}
       gap={8}
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Translate.toString(transform),
-        transition,
-      }}
-      {...attributes}
+      style={{ cursor: 'default' }}
     >
-      <Flexbox
-        ref={setActivatorNodeRef}
-        style={{ cursor: isDragging ? 'grabbing' : 'grab', flexShrink: 0, touchAction: 'none' }}
-        {...listeners}
-      >
-        <Icon icon={GripVertical} size={14} style={{ color: cssVar.colorTextQuaternary }} />
-      </Flexbox>
-      <Icon icon={ArrowDownToLine} size={14} style={{ color: cssVar.colorTextQuaternary }} />
       <div className={styles.spacerLine} />
       <Text style={{ fontSize: 12 }} type={'secondary'}>
         {t('navPanel.bottomDivider' as any)}
@@ -215,9 +206,9 @@ const SpacerSortableItem = memo(() => {
 });
 
 // ---------------------------------------------------------------------------
-// AccordionGroup — a non-draggable slot at the outer level that wraps a nested
-// SortableContext for accordion items. Registers with useSortable so other outer
-// items can reorder relative to its position, but has no drag activator of its own.
+// AccordionGroup — a non-draggable slot that wraps a nested SortableContext
+// for accordion items. Registers with useSortable so other top items can
+// reorder relative to its position.
 // ---------------------------------------------------------------------------
 
 const AccordionGroup = memo<{ children: React.ReactNode }>(({ children }) => {
@@ -238,31 +229,18 @@ const AccordionGroup = memo<{ children: React.ReactNode }>(({ children }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Drag overlay item (static, no sortable hooks)
+// Drag overlay items (static, no sortable hooks)
 // ---------------------------------------------------------------------------
 
 const OverlayItem = memo<{ id: string }>(({ id }) => {
   const { t } = useTranslation('common');
 
-  // Accordion group overlay: render a compact representation
   if (id === ACCORDION_GROUP_ID) {
     return (
       <Flexbox horizontal align={'center'} className={styles.overlay} gap={8}>
         <Icon icon={GripVertical} size={14} style={{ color: cssVar.colorTextQuaternary }} />
         <Text>{t('navPanel.agent' as any)}</Text>
         <Text type={'secondary'}>+ {t('recents' as any)}</Text>
-      </Flexbox>
-    );
-  }
-
-  if (isSpacer(id)) {
-    return (
-      <Flexbox horizontal align={'center'} className={styles.overlay} gap={8}>
-        <Icon icon={GripVertical} size={14} style={{ color: cssVar.colorTextQuaternary }} />
-        <Icon icon={ArrowDownToLine} size={14} style={{ color: cssVar.colorTextQuaternary }} />
-        <Text style={{ fontSize: 12 }} type={'secondary'}>
-          {t('navPanel.bottomDivider' as any)}
-        </Text>
       </Flexbox>
     );
   }
@@ -281,28 +259,22 @@ const OverlayItem = memo<{ id: string }>(({ id }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Main content
+// DnD Zone — a self-contained sortable area with its own DndContext
 // ---------------------------------------------------------------------------
+
+interface DndZoneProps {
+  hiddenSections: string[];
+  items: string[];
+  onReorder: (items: string[]) => void;
+  onToggle: (key: string) => void;
+}
 
 /** Flatten outer list (with ACCORDION_GROUP_ID placeholder) + inner accordion items → full list. */
 const flattenItems = (outer: string[], inner: string[]): string[] =>
   outer.flatMap((id) => (id === ACCORDION_GROUP_ID ? inner : [id]));
 
-const CustomizeSidebarContent = memo(() => {
-  const [storeItems, hiddenSections, updateSystemStatus] = useGlobalStore((s) => [
-    systemStatusSelectors.sidebarItems(s),
-    systemStatusSelectors.hiddenSidebarSections(s),
-    s.updateSystemStatus,
-  ]);
-
-  // Local state for drag operations — only persisted on dragEnd
-  const [items, setItems] = useState<string[]>(storeItems);
+const DndZone = memo<DndZoneProps>(({ hiddenSections, items, onReorder, onToggle }) => {
   const [activeId, setActiveId] = useState<string | null>(null);
-
-  // Sync local state when store changes (e.g. reset)
-  useEffect(() => {
-    setItems(storeItems);
-  }, [storeItems]);
 
   // Derive outer (with group placeholder) and inner (accordion items)
   const { innerItems, outerItems } = useMemo(() => {
@@ -328,33 +300,6 @@ const CustomizeSidebarContent = memo(() => {
     useSensor(KeyboardSensor),
   );
 
-  const toggleSection = useCallback(
-    (key: string) => {
-      const isHidden = hiddenSections.includes(key);
-      const newHidden = isHidden
-        ? hiddenSections.filter((k) => k !== key)
-        : [...hiddenSections, key];
-      updateSystemStatus({ hiddenSidebarSections: newHidden });
-    },
-    [hiddenSections, updateSystemStatus],
-  );
-
-  // Collision detection: restrict targets to the same container as the active item.
-  // - Active in inner (recents/agent) → only collide with inner items
-  // - Active in outer (pages/community/... or the group itself) → only collide with outer items
-  const collisionDetection = useCallback<CollisionDetection>((args) => {
-    const activeId = args.active.id as string;
-    const isInner = isAccordionKey(activeId);
-    const droppableContainers = args.droppableContainers.filter((c) => {
-      const id = c.id as string;
-      const targetIsInner = isAccordionKey(id);
-      return isInner === targetIsInner;
-    });
-    return closestCenter({ ...args, droppableContainers });
-  }, []);
-
-  // ---- DnD handlers ----
-
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(event.active.id as string);
   }, []);
@@ -370,40 +315,32 @@ const CustomizeSidebarContent = memo(() => {
 
       let next: string[];
       if (isAccordionKey(activeKey)) {
-        // Inner reorder (recents ↔ agent)
         const oldIdx = innerItems.indexOf(activeKey);
         const newIdx = innerItems.indexOf(overKey);
         if (oldIdx === -1 || newIdx === -1) return;
         next = flattenItems(outerItems, arrayMove(innerItems, oldIdx, newIdx));
       } else {
-        // Outer reorder (pages/community/... or the whole accordion group)
         const oldIdx = outerItems.indexOf(activeKey);
         const newIdx = outerItems.indexOf(overKey);
         if (oldIdx === -1 || newIdx === -1) return;
         next = flattenItems(arrayMove(outerItems, oldIdx, newIdx), innerItems);
       }
 
-      setItems(next);
-      updateSystemStatus({ sidebarItems: next });
+      onReorder(next);
     },
-    [innerItems, outerItems, updateSystemStatus],
+    [innerItems, outerItems, onReorder],
   );
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);
-    setItems(storeItems);
-  }, [storeItems]);
+  }, []);
 
-  const renderItem = (id: string) =>
-    isSpacer(id) ? (
-      <SpacerSortableItem key={id} />
-    ) : (
-      <SortableItem hiddenSections={hiddenSections} id={id} key={id} onToggle={toggleSection} />
-    );
+  const renderItem = (id: string) => (
+    <SortableItem hiddenSections={hiddenSections} id={id} key={id} onToggle={onToggle} />
+  );
 
   return (
     <DndContext
-      collisionDetection={collisionDetection}
       sensors={sensors}
       onDragCancel={handleDragCancel}
       onDragEnd={handleDragEnd}
@@ -432,6 +369,74 @@ const CustomizeSidebarContent = memo(() => {
         document.body,
       )}
     </DndContext>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Main content
+// ---------------------------------------------------------------------------
+
+const CustomizeSidebarContent = memo(() => {
+  const [storeItems, hiddenSections, updateSystemStatus] = useGlobalStore((s) => [
+    systemStatusSelectors.sidebarItems(s),
+    systemStatusSelectors.hiddenSidebarSections(s),
+    s.updateSystemStatus,
+  ]);
+
+  // Local state for drag operations — only persisted on dragEnd
+  const [topItems, setTopItems] = useState<string[]>([]);
+  const [bottomItems, setBottomItems] = useState<string[]>([]);
+
+  // Sync local state when store changes (e.g. reset)
+  useEffect(() => {
+    const { top, bottom } = splitBySpacer(storeItems);
+    setTopItems(top);
+    setBottomItems(bottom);
+  }, [storeItems]);
+
+  const toggleSection = useCallback(
+    (key: string) => {
+      const isHidden = hiddenSections.includes(key);
+      const newHidden = isHidden
+        ? hiddenSections.filter((k) => k !== key)
+        : [...hiddenSections, key];
+      updateSystemStatus({ hiddenSidebarSections: newHidden });
+    },
+    [hiddenSections, updateSystemStatus],
+  );
+
+  const handleTopReorder = useCallback(
+    (next: string[]) => {
+      setTopItems(next);
+      updateSystemStatus({ sidebarItems: mergeWithSpacer(next, bottomItems) });
+    },
+    [bottomItems, updateSystemStatus],
+  );
+
+  const handleBottomReorder = useCallback(
+    (next: string[]) => {
+      setBottomItems(next);
+      updateSystemStatus({ sidebarItems: mergeWithSpacer(topItems, next) });
+    },
+    [topItems, updateSystemStatus],
+  );
+
+  return (
+    <Flexbox gap={2}>
+      <DndZone
+        hiddenSections={hiddenSections}
+        items={topItems}
+        onReorder={handleTopReorder}
+        onToggle={toggleSection}
+      />
+      <SpacerDivider />
+      <DndZone
+        hiddenSections={hiddenSections}
+        items={bottomItems}
+        onReorder={handleBottomReorder}
+        onToggle={toggleSection}
+      />
+    </Flexbox>
   );
 });
 

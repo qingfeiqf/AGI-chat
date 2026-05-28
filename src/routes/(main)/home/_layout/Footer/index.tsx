@@ -33,7 +33,7 @@ import { useFeedbackModal } from '@/hooks/useFeedbackModal';
 import { useCreateMenuItems } from '@/routes/(main)/home/_layout/hooks';
 import { useChatStore } from '@/store/chat';
 import { useGlobalStore } from '@/store/global';
-import { systemStatusSelectors } from '@/store/global/selectors/systemStatus';
+import { SIDEBAR_SPACER_ID, systemStatusSelectors } from '@/store/global/selectors/systemStatus';
 import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
 import { userGeneralSettingsSelectors } from '@/store/user/slices/settings/selectors/general';
@@ -42,6 +42,26 @@ import { prefetchRoute } from '@/utils/router';
 import { resolveFooterPromotionState } from './promotionPipeline';
 
 const AGENT_ONBOARDING_PROMO_SLUG = 'agent-onboarding-promo-v1';
+
+/** Sidebar item id → route id mapping */
+const SIDEBAR_TO_ROUTE_ID: Record<string, string> = {
+  community: 'community',
+  image: 'image',
+  memory: 'memory',
+  pages: 'page',
+  resource: 'resource',
+  tasks: 'tasks',
+};
+
+/** Route id → i18n key for tooltip labels */
+const ROUTE_I18N_KEY: Record<string, string> = {
+  community: 'tab.community',
+  image: 'tab.generation',
+  memory: 'tab.memory',
+  page: 'tab.pages',
+  resource: 'tab.resource',
+  tasks: 'tab.tasks',
+};
 
 const PRODUCT_HUNT_NOTIFICATION = {
   actionHref: 'https://www.producthunt.com/products/lobehub?launch=lobehub',
@@ -73,7 +93,7 @@ const Footer = memo(() => {
   const enableAgentOnboarding = useServerConfigStore((s) => s.featureFlags.enableAgentOnboarding);
   const isMobile = useServerConfigStore((s) => !!s.isMobile);
   const serverConfigInit = useServerConfigStore((s) => s.serverConfigInit);
-  const { showMarket, hideGitHub } = useServerConfigStore(featureFlagsSelectors);
+  const { hideGitHub } = useServerConfigStore(featureFlagsSelectors);
   const [agentOnboardingFinished, agentOnboardingStarted, classicOnboardingFinished, isDevMode] =
     useUserStore((s) => [
       !!s.agentOnboarding?.finishedAt,
@@ -363,12 +383,24 @@ const Footer = memo(() => {
     ],
   );
 
-  // Route configs
-  const pagesRoute = getRouteById('page');
-  const tasksRoute = getRouteById('tasks');
-  const imageRoute = getRouteById('image');
-  const resourceRoute = getRouteById('resource');
-  const communityRoute = getRouteById('community');
+  // Read sidebar order and hidden sections from store
+  const [sidebarItems, hiddenSections] = useGlobalStore((s) => [
+    systemStatusSelectors.sidebarItems(s),
+    systemStatusSelectors.hiddenSidebarSections(s),
+  ]);
+
+  const bottomItemRoutes = useMemo(() => {
+    const idx = sidebarItems.indexOf(SIDEBAR_SPACER_ID);
+    if (idx === -1) return [];
+    return sidebarItems
+      .slice(idx + 1)
+      .filter((id) => !hiddenSections.includes(id))
+      .map((id) => {
+        const routeId = SIDEBAR_TO_ROUTE_ID[id];
+        return routeId ? getRouteById(routeId) : undefined;
+      })
+      .filter((r): r is NonNullable<typeof r> => !!r);
+  }, [sidebarItems, hiddenSections]);
 
   return (
     <>
@@ -390,60 +422,17 @@ const Footer = memo(() => {
           />
         </DropdownMenu>
 
-        {/* 文稿 */}
-        {pagesRoute && (
+        {/* Dynamic bottom items from sidebar customization */}
+        {bottomItemRoutes.map((route) => (
           <ActionIcon
-            icon={pagesRoute.icon}
+            icon={route.icon}
+            key={route.id}
             size={16}
-            title={t('tab.pages')}
-            onClick={() => navigateTo(pagesRoute.path)}
-            onMouseEnter={() => prefetchRoute(pagesRoute.path)}
+            title={t((ROUTE_I18N_KEY[route.id] ?? route.id) as any)}
+            onClick={() => navigateTo(route.path)}
+            onMouseEnter={() => prefetchRoute(route.path)}
           />
-        )}
-
-        {/* 任务 */}
-        {tasksRoute && (
-          <ActionIcon
-            icon={tasksRoute.icon}
-            size={16}
-            title={t('tab.tasks')}
-            onClick={() => navigateTo(tasksRoute.path)}
-            onMouseEnter={() => prefetchRoute(tasksRoute.path)}
-          />
-        )}
-
-        {/* 生成 */}
-        {imageRoute && (
-          <ActionIcon
-            icon={imageRoute.icon}
-            size={16}
-            title={t('tab.generation')}
-            onClick={() => navigateTo(imageRoute.path)}
-            onMouseEnter={() => prefetchRoute(imageRoute.path)}
-          />
-        )}
-
-        {/* 资源 */}
-        {resourceRoute && (
-          <ActionIcon
-            icon={resourceRoute.icon}
-            size={16}
-            title={t('tab.resource')}
-            onClick={() => navigateTo(resourceRoute.path)}
-            onMouseEnter={() => prefetchRoute(resourceRoute.path)}
-          />
-        )}
-
-        {/* 社区 */}
-        {showMarket && communityRoute && (
-          <ActionIcon
-            icon={communityRoute.icon}
-            size={16}
-            title={t('tab.community')}
-            onClick={() => navigateTo(communityRoute.path)}
-            onMouseEnter={() => prefetchRoute(communityRoute.path)}
-          />
-        )}
+        ))}
 
         {/* 设置 */}
         <ActionIcon
