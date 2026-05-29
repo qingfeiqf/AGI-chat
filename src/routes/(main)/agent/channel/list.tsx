@@ -24,8 +24,8 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     align-items: center;
 
     width: 100%;
-    padding-block: 10px;
-    padding-inline: 12px;
+    padding-block: 8px;
+    padding-inline: 10px;
     border: none;
     border-radius: ${cssVar.borderRadius};
 
@@ -54,15 +54,15 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     flex-direction: column;
     gap: 4px;
 
-    padding: 12px;
-    padding-block-start: 16px;
+    padding: 8px;
+    padding-block-start: 12px;
   `,
   root: css`
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
 
-    width: 260px;
+    width: 220px;
     border-inline-end: 1px solid ${cssVar.colorBorder};
   `,
   statusDot: css`
@@ -297,7 +297,7 @@ const PlatformList = memo<PlatformListProps>(
             borderTop: `1px solid ${theme.colorBorder}`,
             display: 'flex',
             justifyContent: 'space-between',
-            padding: 12,
+            padding: 8,
           }}
         >
           <a

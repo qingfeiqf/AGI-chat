@@ -22,7 +22,7 @@ const useStyles = createStyles(({ css, cssVar }) => ({
     overflow: hidden auto;
 
     min-height: 400px;
-    max-height: 70vh;
+    max-height: min(70vh, 700px);
     padding-block: 12px 24px;
     padding-inline: 12px;
   `,
@@ -83,7 +83,7 @@ const AgentTasksModal = memo<AgentTasksModalProps>(({ agentId, open, onCancel })
       footer={null}
       open={open}
       title={`${agentTitle} 的任务`}
-      width={1000}
+      width={'min(88vw, 1100px)'}
       onCancel={() => {
         setActiveTaskId(undefined);
         onCancel();

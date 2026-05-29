@@ -17,12 +17,12 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-block-start: 16px;
+    padding-block-start: 12px;
   `,
   bottom: css`
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 8px;
 
     width: 100%;
     max-width: 1024px;

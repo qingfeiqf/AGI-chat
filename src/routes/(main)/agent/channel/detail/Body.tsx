@@ -183,7 +183,7 @@ const SchemaField = memo<SchemaFieldProps>(({ field, parentKey, divider }) => {
       divider={divider}
       initialValue={field.default}
       label={label}
-      minWidth={'max(50%, 400px)'}
+      minWidth={'max(33%, 320px)'}
       name={[parentKey, field.key]}
       rules={buildRules(field, t)}
       tag={isDev ? field.key : undefined}
@@ -226,7 +226,7 @@ const ObjectListField = memo<ObjectListFieldProps>(({ field, parentKey, divider,
       desc={field.description ? t(field.description) : undefined}
       divider={divider}
       label={label}
-      minWidth={'max(50%, 400px)'}
+      minWidth={'max(33%, 320px)'}
       tag={isDev ? field.key : undefined}
       variant="borderless"
     >
@@ -301,7 +301,7 @@ const ApplicationIdField = memo<{ divider?: boolean; field: FieldSchema }>(({ fi
       divider={divider}
       initialValue={field.default}
       label={t(field.label)}
-      minWidth={'max(50%, 400px)'}
+      minWidth={'max(33%, 320px)'}
       name="applicationId"
       rules={field.required ? [{ message: t(field.label), required: true }] : undefined}
       tag={isDev ? 'applicationId' : undefined}
@@ -397,9 +397,9 @@ const Body = memo<BodyProps>(({ platformDef, form, hasConfig, currentConfig, onA
       className={styles.form}
       form={form}
       gap={0}
-      itemMinWidth={'max(50%, 400px)'}
+      itemMinWidth={'max(33%, 320px)'}
       requiredMark={false}
-      style={{ maxWidth: 1024, padding: '16px 0', width: '100%' }}
+      style={{ maxWidth: 1024, padding: '12px 0', width: '100%' }}
       variant={'borderless'}
     >
       {CustomCredentialBody ? (
@@ -449,7 +449,7 @@ const Body = memo<BodyProps>(({ platformDef, form, hasConfig, currentConfig, onA
           collapsible
           defaultActive={userIdInitiallyMissing}
           keyValue={`settings-${platformDef.id}`}
-          style={{ marginBlockStart: 16 }}
+          style={{ marginBlockStart: 12 }}
           title={<SettingsTitle schema={platformDef.schema} />}
           variant="borderless"
           extra={

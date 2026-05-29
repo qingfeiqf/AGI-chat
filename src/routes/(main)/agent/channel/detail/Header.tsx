@@ -2,6 +2,7 @@
 
 import { ActionIcon, Flexbox, Tag } from '@lobehub/ui';
 import { Button, Switch } from 'antd';
+import { useResponsive } from 'antd-style';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -43,6 +44,7 @@ const Header = memo<HeaderProps>(
     toggleLoading,
   }) => {
     const { t } = useTranslation('agent');
+    const { lg = true } = useResponsive();
     const PlatformIcon = getPlatformIcon(platformDef.name);
     const ColorIcon =
       PlatformIcon && 'Color' in PlatformIcon ? (PlatformIcon as any).Color : PlatformIcon;
@@ -83,7 +85,7 @@ const Header = memo<HeaderProps>(
         style={{
           borderBottom: '1px solid var(--ant-color-border)',
           maxWidth: 1024,
-          padding: '16px 0',
+          padding: '12px 0',
           width: '100%',
         }}
       >
@@ -104,7 +106,7 @@ const Header = memo<HeaderProps>(
               onClick={onRefreshStatus}
             />
           )}
-          {platformDef.documentation?.setupGuideUrl && (
+          {lg && platformDef.documentation?.setupGuideUrl && (
             <a
               href={platformDef.documentation.setupGuideUrl}
               rel="noopener noreferrer"
@@ -113,7 +115,7 @@ const Header = memo<HeaderProps>(
               <InfoTooltip title={t('channel.setupGuide')} />
             </a>
           )}
-          {platformDef.documentation?.portalUrl && (
+          {lg && platformDef.documentation?.portalUrl && (
             <a href={platformDef.documentation.portalUrl} rel="noopener noreferrer" target="_blank">
               <Button icon={<ExternalLink size={14} />} size="small" type="link">
                 {t('channel.openPlatform')}

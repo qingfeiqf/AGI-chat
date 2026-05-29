@@ -1,6 +1,7 @@
 'use client';
 
 import { Modal } from '@lobehub/ui';
+import { ConfigProvider } from 'antd';
 import { createStyles } from 'antd-style';
 import { memo, useCallback, useEffect, useState } from 'react';
 
@@ -38,12 +39,13 @@ const useStyles = createStyles(({ css }) => ({
     }
   `,
   wrapper: css`
-    overflow: hidden;
     display: flex;
     flex-direction: column;
 
-    height: 75vh;
-    min-height: 500px;
+    height: min(85vh, 900px);
+    min-height: min(500px, 85vh);
+    padding-block-end: 16px;
+    padding-inline: 16px;
 
     /* Hide the AutoSaveHint / status hints in the header left area */
     .lobe-nav-header-left,
@@ -126,14 +128,16 @@ const AgentProfileModal = memo<AgentProfileModalProps>(({ agentId, open, onCance
       footer={null}
       open={open}
       title={`${agentTitle} 的助手信息`}
-      width={1300}
+      width={'min(92vw, 1400px)'}
       onCancel={onCancel}
     >
-      <AgentProfileModalContainerContext value={modalWrapElement}>
-        <div className={styles.wrapper} ref={wrapperRefCallback}>
-          {open && agentId && <AgentProfileModalContent agentId={agentId} />}
-        </div>
-      </AgentProfileModalContainerContext>
+      <ConfigProvider getPopupContainer={() => modalWrapElement ?? document.body}>
+        <AgentProfileModalContainerContext value={modalWrapElement}>
+          <div className={styles.wrapper} ref={wrapperRefCallback}>
+            {open && agentId && <AgentProfileModalContent agentId={agentId} />}
+          </div>
+        </AgentProfileModalContainerContext>
+      </ConfigProvider>
     </Modal>
   );
 });
