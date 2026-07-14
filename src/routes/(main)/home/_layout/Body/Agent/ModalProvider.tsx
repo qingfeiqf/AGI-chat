@@ -6,12 +6,14 @@ import { useNavigate } from 'react-router-dom';
 
 import { ChatGroupWizard } from '@/components/ChatGroupWizard';
 import { MemberSelectionModal } from '@/components/MemberSelectionModal';
+import CreatePlatformAgentModal from '@/features/CreatePlatformAgent';
 import EditingPopover from '@/features/EditingPopover';
 import { CreateAgentModal } from '@/routes/(main)/home/_layout/hooks/useCreateModal';
 import { useAgentStore } from '@/store/agent';
 import { builtinAgentSelectors } from '@/store/agent/selectors';
 import { useHomeStore } from '@/store/home';
 
+import AgentChannelModal from './Modals/AgentChannelModal';
 import AgentProfileModal from './Modals/AgentProfileModal';
 import AgentTasksModal from './Modals/AgentTasksModal';
 import ConfigGroupModal from './Modals/ConfigGroupModal';
@@ -22,18 +24,22 @@ interface OpenCreateModalOptions {
 }
 
 interface AgentModalContextValue {
+  closeAgentChannelModal: () => void;
   closeAgentProfileModal: () => void;
   closeAgentTasksModal: () => void;
   closeAllModals: () => void;
   closeConfigGroupModal: () => void;
   closeCreateGroupModal: () => void;
+  closeCreatePlatformAgentModal: () => void;
   closeGroupWizardModal: () => void;
   closeMemberSelectionModal: () => void;
+  openAgentChannelModal: (agentId: string, title?: string) => void;
   openAgentProfileModal: (agentId: string) => void;
   openAgentTasksModal: (agentId: string) => void;
   openConfigGroupModal: () => void;
   openCreateGroupModal: (sessionId: string) => void;
   openCreateModal: (type: 'agent' | 'group', options?: OpenCreateModalOptions) => void;
+  openCreatePlatformAgentModal: (options?: OpenCreateModalOptions) => void;
   openGroupWizardModal: (callbacks: GroupWizardCallbacks) => void;
   openMemberSelectionModal: (callbacks: MemberSelectionCallbacks) => void;
   setGroupWizardLoading: (loading: boolean) => void;
@@ -147,6 +153,17 @@ export const AgentModalProvider = memo<AgentModalProviderProps>(({ children }) =
   const [agentProfileModalOpen, setAgentProfileModalOpen] = useState(false);
   const [agentProfileModalAgentId, setAgentProfileModalAgentId] = useState<string>('');
 
+  // AgentChannelModal state
+  const [agentChannelModalOpen, setAgentChannelModalOpen] = useState(false);
+  const [agentChannelModalAgentId, setAgentChannelModalAgentId] = useState<string>('');
+  const [agentChannelModalTitle, setAgentChannelModalTitle] = useState<string>('');
+
+  // CreatePlatformAgentModal state
+  const [createPlatformAgentOpen, setCreatePlatformAgentOpen] = useState(false);
+  const [createPlatformAgentGroupId, setCreatePlatformAgentGroupId] = useState<string | undefined>(
+    undefined,
+  );
+
   const contextValue = useMemo<AgentModalContextValue>(
     () => ({
       closeAllModals: () => {
@@ -157,13 +174,17 @@ export const AgentModalProvider = memo<AgentModalProviderProps>(({ children }) =
         setCreateModalOpen(false);
         setAgentTasksModalOpen(false);
         setAgentProfileModalOpen(false);
+        setAgentChannelModalOpen(false);
+        setCreatePlatformAgentOpen(false);
       },
       closeConfigGroupModal: () => setConfigGroupModalOpen(false),
       closeCreateGroupModal: () => setCreateGroupModalOpen(false),
+      closeCreatePlatformAgentModal: () => setCreatePlatformAgentOpen(false),
       closeGroupWizardModal: () => setGroupWizardOpen(false),
       closeMemberSelectionModal: () => setMemberSelectionOpen(false),
       closeAgentTasksModal: () => setAgentTasksModalOpen(false),
       closeAgentProfileModal: () => setAgentProfileModalOpen(false),
+      closeAgentChannelModal: () => setAgentChannelModalOpen(false),
       openConfigGroupModal: () => setConfigGroupModalOpen(true),
       openCreateGroupModal: (sessionId: string) => {
         setCreateGroupSessionId(sessionId);
@@ -173,6 +194,10 @@ export const AgentModalProvider = memo<AgentModalProviderProps>(({ children }) =
         setCreateModalType(type);
         setCreateModalGroupId(options?.groupId);
         setCreateModalOpen(true);
+      },
+      openCreatePlatformAgentModal: (options?: OpenCreateModalOptions) => {
+        setCreatePlatformAgentGroupId(options?.groupId);
+        setCreatePlatformAgentOpen(true);
       },
       openGroupWizardModal: (callbacks: GroupWizardCallbacks) => {
         setGroupWizardCallbacks(callbacks);
@@ -190,6 +215,11 @@ export const AgentModalProvider = memo<AgentModalProviderProps>(({ children }) =
         setAgentProfileModalAgentId(agentId);
         setAgentProfileModalOpen(true);
       },
+      openAgentChannelModal: (agentId: string, title?: string) => {
+        setAgentChannelModalAgentId(agentId);
+        setAgentChannelModalTitle(title || '');
+        setAgentChannelModalOpen(true);
+      },
       setGroupWizardLoading,
     }),
     [],
@@ -202,6 +232,11 @@ export const AgentModalProvider = memo<AgentModalProviderProps>(({ children }) =
         open={createModalOpen}
         type={createModalType}
         onClose={() => setCreateModalOpen(false)}
+      />
+      <CreatePlatformAgentModal
+        groupId={createPlatformAgentGroupId}
+        open={createPlatformAgentOpen}
+        onClose={() => setCreatePlatformAgentOpen(false)}
       />
       {children}
 
@@ -232,6 +267,15 @@ export const AgentModalProvider = memo<AgentModalProviderProps>(({ children }) =
           agentId={agentProfileModalAgentId}
           open={agentProfileModalOpen}
           onCancel={() => setAgentProfileModalOpen(false)}
+        />
+      )}
+
+      {agentChannelModalOpen && (
+        <AgentChannelModal
+          agentId={agentChannelModalAgentId}
+          open={agentChannelModalOpen}
+          title={agentChannelModalTitle}
+          onCancel={() => setAgentChannelModalOpen(false)}
         />
       )}
 

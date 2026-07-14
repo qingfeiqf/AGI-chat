@@ -2,9 +2,9 @@
 
 [![][image-banner]][vercel-link]
 
-# LobeHub
+# AGI-chat
 
-LobeHub 帮你把专属 Agent 组织成 7×24 不打烊的高效队伍：
+AGI-chat 是基于著名的 LobeHub 项目，结合我个人对企业智能助理 / 智能体的思考而打造的企业级专属 Agent ，为企业提供 7×24 不打烊的高效智能助理：
 
 自动为你招募适配的 AI 队友、调度任务排班、汇总生成工作报告，
 
@@ -28,7 +28,7 @@ LobeHub 帮你把专属 Agent 组织成 7×24 不打烊的高效队伍：
 [![][github-issues-shield]][github-issues-link]
 [![][github-license-shield]][github-license-link]<br>
 
-**分享 LobeHub 给你的好友**
+**分享 AGI-chat 给你的好友**
 
 [![][share-x-shield]][share-x-link]
 [![][share-telegram-shield]][share-telegram-link]

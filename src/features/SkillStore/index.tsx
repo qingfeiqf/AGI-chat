@@ -1,8 +1,9 @@
 'use client';
 
-import { createModal, LOBE_THEME_APP_ID } from '@lobehub/ui';
+import { createModal } from '@lobehub/ui';
 import { t } from 'i18next';
 
+import ModalPopupScope from '@/components/ModalPopupScope';
 import { isDesktop } from '@/const/version';
 import { MarketAuthProvider } from '@/layout/AuthProvider/MarketAuth';
 
@@ -13,14 +14,17 @@ export const createSkillStoreModal = () =>
     allowFullscreen: true,
     children: (
       <MarketAuthProvider isDesktop={isDesktop}>
-        <SkillStoreContent />
+        {/* ModalPopupScope portals antd + base-ui popups into THIS modal's wrap so
+            they render above the modal content (not behind it). The modal itself
+            renders to document.body (default) so antd's incremental z-index stacks
+            it correctly on top of a parent modal — closing returns to the parent. */}
+        <ModalPopupScope>
+          <SkillStoreContent />
+        </ModalPopupScope>
       </MarketAuthProvider>
     ),
     destroyOnHidden: false,
     footer: null,
-    // Render the antd Modal inside appElement instead of document.body,
-    // so the modal and DropdownMenu portals share the same stacking context
-    getContainer: () => document.getElementById(LOBE_THEME_APP_ID) || document.body,
     styles: {
       body: { overflow: 'hidden', padding: 0 },
     },

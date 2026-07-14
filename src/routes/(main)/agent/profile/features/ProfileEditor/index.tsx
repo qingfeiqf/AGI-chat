@@ -9,6 +9,7 @@ import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import ModelSelect from '@/features/ModelSelect';
+import { useAgentProfileModalContainer } from '@/routes/(main)/home/_layout/Body/Agent/Modals/AgentProfileModalContext';
 import { useAgentStore } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
 
@@ -26,6 +27,7 @@ const ProfileEditor = memo(() => {
   const updateConfig = useAgentStore((s) => s.updateAgentConfig);
   const isHeterogeneous = useAgentStore(agentSelectors.isCurrentAgentHeterogeneous);
   const heterogeneousProvider = config.agencyConfig?.heterogeneousProvider;
+  const modalContainer = useAgentProfileModalContainer();
 
   const updateHeterogeneousCommand = async (command: string) => {
     if (!heterogeneousProvider) return;

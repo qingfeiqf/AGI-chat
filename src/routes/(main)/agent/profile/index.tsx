@@ -21,11 +21,19 @@ const styles = StyleSheet.create({
   contentWrapper: {
     cursor: 'text',
     display: 'flex',
+    // flex:1 + minHeight:0 so the editor (left) takes the remaining height after
+    // the Header and scrolls on its own — the modal body itself does NOT scroll,
+    // so the right-side AgentBuilder chat + input stay fully visible.
+    flex: 1,
+    minHeight: 0,
     overflowY: 'auto',
     position: 'relative',
   },
   profileArea: {
     minWidth: 0,
+    // minHeight:0 completes the flex shrink chain so contentWrapper scrolls
+    // instead of the column growing past the modal.
+    minHeight: 0,
   },
 });
 
@@ -43,7 +51,7 @@ const ProfileArea = memo(() => {
             <Header />
             <Flexbox
               horizontal
-              height={'100%'}
+              flex={1}
               style={styles.contentWrapper}
               width={'100%'}
               onClick={(e) => {
@@ -71,7 +79,7 @@ const AgentProfile: FC = () => {
   return (
     <Suspense fallback={<Loading debugId="AgentProfile" />}>
       <ProfileProvider>
-        <Flexbox horizontal height={'100%'} width={'100%'}>
+        <Flexbox horizontal height={'100%'} style={{ minHeight: 0 }} width={'100%'}>
           <ProfileArea />
           <AgentBuilder />
         </Flexbox>

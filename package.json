@@ -572,6 +572,16 @@
     },
     "patchedDependencies": {
       "@upstash/qstash": "patches/@upstash__qstash.patch"
-    }
+    },
+    "ignoredBuiltDependencies": [
+      "core-js",
+      "electron",
+      "es5-ext",
+      "esbuild",
+      "msgpackr-extract",
+      "protobufjs",
+      "sharp",
+      "unrs-resolver"
+    ]
   }
 }

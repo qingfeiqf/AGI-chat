@@ -1,10 +1,17 @@
 'use client';
 
 import { Modal } from '@lobehub/ui';
+// Base UI popups (Select, DropdownMenu, Popover) read AppElementContext to pick a
+// portal container (via usePortalContainer -> useAppElement). Override it with the
+// modal wrap so popups render inside the modal's stacking context (above the antd
+// modal) instead of the global app element, which sits behind the antd modal's
+// z-index and causes the model-switcher / +集成技能 popups to appear behind the modal.
+import AppElementContext from '@lobehub/ui/es/ThemeProvider/AppElementContext';
 import { ConfigProvider } from 'antd';
 import { createStyles } from 'antd-style';
 import { memo, useCallback, useEffect, useState } from 'react';
 
+import Loading from '@/components/Loading/BrandTextLoading';
 import { isDesktop } from '@/const/version';
 import { useInitAgentConfig } from '@/hooks/useInitAgentConfig';
 import { MarketAuthProvider } from '@/layout/AuthProvider/MarketAuth';
@@ -34,11 +41,13 @@ const useStyles = createStyles(({ css }) => ({
     }
 
     .ant-modal-body {
-      overflow: hidden !important;
+      overflow: auto !important;
       padding: 0 !important;
     }
   `,
   wrapper: css`
+    position: relative;
+
     display: flex;
     flex-direction: column;
 
@@ -46,12 +55,6 @@ const useStyles = createStyles(({ css }) => ({
     min-height: min(500px, 85vh);
     padding-block-end: 16px;
     padding-inline: 16px;
-
-    /* Hide the AutoSaveHint / status hints in the header left area */
-    .lobe-nav-header-left,
-    [class*='AutoSaveHint'] {
-      display: none !important;
-    }
 
     .ant-tag:has(.lucide-cloud),
     .ant-tag:has(.lucide-loader2) {
@@ -68,6 +71,7 @@ interface AgentProfileModalProps {
 
 const AgentProfileModalContent = memo(({ agentId }: { agentId: string }) => {
   const setActiveAgentId = useAgentStore((s) => s.setActiveAgentId);
+  const activeAgentId = useAgentStore((s) => s.activeAgentId);
 
   useEffect(() => {
     if (agentId) {
@@ -77,9 +81,15 @@ const AgentProfileModalContent = memo(({ agentId }: { agentId: string }) => {
 
   useInitAgentConfig(agentId);
 
+  // setActiveAgentId runs in an effect (after first paint), so without this gate
+  // the previously-active agent's avatar/name/header would flash before the effect
+  // runs and then get swapped out for the loading state — "闪一下又隐藏". Wait
+  // until the store's active agent actually matches the one we're opening.
+  const isReady = activeAgentId === agentId;
+
   return (
     <MarketAuthProvider isDesktop={isDesktop}>
-      <AgentProfile />
+      {isReady ? <AgentProfile /> : <Loading debugId="AgentProfileModalContent" />}
     </MarketAuthProvider>
   );
 });
@@ -132,11 +142,13 @@ const AgentProfileModal = memo<AgentProfileModalProps>(({ agentId, open, onCance
       onCancel={onCancel}
     >
       <ConfigProvider getPopupContainer={() => modalWrapElement ?? document.body}>
-        <AgentProfileModalContainerContext value={modalWrapElement}>
-          <div className={styles.wrapper} ref={wrapperRefCallback}>
-            {open && agentId && <AgentProfileModalContent agentId={agentId} />}
-          </div>
-        </AgentProfileModalContainerContext>
+        <AppElementContext value={modalWrapElement}>
+          <AgentProfileModalContainerContext value={modalWrapElement}>
+            <div className={styles.wrapper} ref={wrapperRefCallback}>
+              {open && agentId && <AgentProfileModalContent agentId={agentId} />}
+            </div>
+          </AgentProfileModalContainerContext>
+        </AppElementContext>
       </ConfigProvider>
     </Modal>
   );

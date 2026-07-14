@@ -26,8 +26,14 @@ const styles = createStaticStyles(({ css }) => ({
   `,
 }));
 
-const ChannelPage = memo(() => {
-  const { aid } = useParams<{ aid?: string }>();
+interface ChannelPageProps {
+  /** Agent ID override — when omitted, read from route params. */
+  agentId?: string;
+}
+
+const ChannelPage = memo<ChannelPageProps>(({ agentId: propAgentId }) => {
+  const { aid: routeAid } = useParams<{ aid?: string }>();
+  const aid = propAgentId ?? routeAid;
   const [activeProviderId, setActiveProviderId] = useState<string>('');
 
   const { data: platforms, isLoading: platformsLoading } = useAgentStore((s) =>

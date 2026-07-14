@@ -65,6 +65,15 @@ export default ({ token }: { prefixCls: string; token: Theme }) => css`
     -webkit-app-region: no-drag;
   }
 
+  /* Dropdown menu items should show a pointer cursor on hover.
+     @lobehub/ui's DropdownMenu item style omits cursor, so clickable
+     menuitems inherit the default cursor instead of the hand. */
+  [role='menuitem']:not([data-disabled], [aria-disabled='true']),
+  [role='menuitemcheckbox']:not([data-disabled], [aria-disabled='true']),
+  [role='menuitemradio']:not([data-disabled], [aria-disabled='true']) {
+    cursor: pointer;
+  }
+
   .${CLASSNAMES.ContextTrigger}[data-popup-open]:not([data-no-highlight]),
   .${CLASSNAMES.DropdownMenuTrigger}[data-popup-open]:not([data-no-highlight]) {
     background: ${token.colorFillTertiary};

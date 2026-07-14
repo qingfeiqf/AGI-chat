@@ -1,10 +1,11 @@
 'use client';
 
 import { type PropsWithChildren, type ReactNode } from 'react';
-import { memo, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import CompactSidebar from '@/routes/(main)/home/_layout/CompactSidebar';
-import Sidebar from '@/routes/(main)/home/_layout/Sidebar';
+import SidebarContent from '@/routes/(main)/home/_layout/SidebarContent';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
 
@@ -51,6 +52,7 @@ export const useActiveNavKey = () =>
   useSyncExternalStore(subscribeNavPanel, getActiveNavKey, getActiveNavKey);
 
 const NavPanel = memo(() => {
+  const { pathname } = useLocation();
   const panelContent = useSyncExternalStore(
     subscribeNavPanel,
     getNavPanelSnapshot,
@@ -59,8 +61,27 @@ const NavPanel = memo(() => {
 
   const expand = useGlobalStore(systemStatusSelectors.showLeftPanel);
 
-  // Use home Content as fallback when no portal content is provided
-  const activeContent = panelContent || { key: FALLBACK_NAV_KEY, node: <Sidebar /> };
+  // When navigating back to "/" from a sub-page, the sub-page's portal has already
+  // unmounted but left a stale snapshot. Detect this and reset so the Home portal
+  // (which is still alive inside <Activity mode="hidden">) can re-register.
+  // The reset is deferred via rAF to avoid triggering a synchronous useSyncExternalStore
+  // re-render during React's commit phase.
+  useEffect(() => {
+    if (pathname === '/' && panelContent && panelContent.key !== FALLBACK_NAV_KEY) {
+      requestAnimationFrame(() => {
+        const current = getNavPanelSnapshot();
+        if (current && current.key !== FALLBACK_NAV_KEY) {
+          setNavPanelSnapshot(null);
+        }
+      });
+    }
+  }, [pathname, panelContent?.key]);
+
+  // Use home Content as fallback when no portal content is provided.
+  // The fallback intentionally does NOT include NavPanelPortal — rendering one here
+  // would create a duplicate portal whose cleanup effect would clear the snapshot
+  // and re-trigger this same stale-detection path in an infinite loop.
+  const activeContent = panelContent || { key: FALLBACK_NAV_KEY, node: <SidebarContent /> };
 
   // If collapsed, ignore page-specific portal content and fallback to CompactSidebar directly
   const finalContent = expand ? activeContent : { key: 'compact', node: <CompactSidebar /> };

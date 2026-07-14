@@ -5,9 +5,9 @@ services:
     container_name: lobe-network
     restart: always
     ports:
-      - '${RUSTFS_PORT}:9000' # RustFS API
-      - '9001:9001' # RustFS Console
-      - '${LOBE_PORT}:3210' # LobeChat
+      - '${RUSTFS_PORT}:9000'
+      - '9001:9001'
+      - '${LOBE_PORT}:3210'
     command: tail -f /dev/null
     networks:
       - lobe-network
@@ -21,9 +21,11 @@ services:
       - '5432:5432'
     volumes:
       - './data:/var/lib/postgresql/data'
+      - './pg_hba.conf:/etc/postgresql/pg_hba.conf'
     environment:
       - 'POSTGRES_DB=${LOBE_DB_NAME}'
       - 'POSTGRES_PASSWORD=${POSTGRES_PASSWORD}'
+    command: ['postgres', '-c', 'hba_file=/etc/postgresql/pg_hba.conf']
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s

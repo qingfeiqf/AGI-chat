@@ -12,6 +12,7 @@ import {
   PictureInPicture2Icon,
   Pin,
   PinOff,
+  RadioTowerIcon,
   Trash,
 } from 'lucide-react';
 import { useMemo } from 'react';
@@ -44,7 +45,7 @@ export const useAgentDropdownMenu = ({
 }: UseAgentDropdownMenuParams): (() => MenuProps['items']) => {
   const { t } = useTranslation('chat');
   const { modal, message } = App.useApp();
-  const { openAgentProfileModal } = useAgentModal();
+  const { openAgentProfileModal, openAgentChannelModal } = useAgentModal();
 
   const openAgentInNewWindow = useGlobalStore((s) => s.openAgentInNewWindow);
   const sessionCustomGroups = useHomeStore(homeAgentListSelectors.agentGroups, isEqual);
@@ -73,6 +74,15 @@ export const useAgentDropdownMenu = ({
           onClick: (info: any) => {
             info.domEvent?.stopPropagation();
             openAgentProfileModal(id);
+          },
+        },
+        {
+          icon: <Icon icon={RadioTowerIcon} />,
+          key: 'channel',
+          label: '消息频道',
+          onClick: (info: any) => {
+            info.domEvent?.stopPropagation();
+            openAgentChannelModal(id, title);
           },
         },
         {
@@ -155,6 +165,7 @@ export const useAgentDropdownMenu = ({
       openCreateGroupModal,
       message,
       openAgentProfileModal,
+      openAgentChannelModal,
     ],
   );
 };
