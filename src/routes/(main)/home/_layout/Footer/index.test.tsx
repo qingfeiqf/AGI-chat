@@ -6,6 +6,27 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const analyticsTrack = vi.fn();
 
+// Stub the base-ui ActionIcon — base-ui components need a MotionProvider the
+// app sets up globally but the unit env doesn't. Render a plain button so
+// title/aria-label queries keep working.
+vi.mock('@lobehub/ui/base-ui', () => ({
+  ActionIcon: ({
+    'aria-label': ariaLabel,
+    icon: _icon,
+    onClick,
+    title,
+  }: {
+    'aria-label'?: string;
+    icon?: unknown;
+    onClick?: () => void;
+    title?: string;
+  }) => (
+    <button aria-label={ariaLabel} onClick={onClick} title={title} type={'button'}>
+      {title ?? ariaLabel}
+    </button>
+  ),
+}));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     i18n: { language: 'en-US' },
@@ -16,7 +37,6 @@ vi.mock('react-i18next', () => ({
           'Set up your agent teams in a quick chat with AGI-chat AI. Your existing agents remain unchanged.',
         'agentOnboardingPromo.title': 'Quick Wizard',
         'changelog': 'Changelog',
-        'getApp': 'Get App',
         'productHunt.actionLabel': 'Support us',
         'productHunt.description': 'Support us on Product Hunt.',
         'productHunt.title': "We're on Product Hunt!",
@@ -24,7 +44,6 @@ vi.mock('react-i18next', () => ({
         'userPanel.docs': 'Docs',
         'userPanel.feedback': 'Feedback',
         'userPanel.help': 'Help',
-        'userPanel.inviteFriend': 'Invite a friend',
         'userPanel.setting': 'Settings',
       })[key] || key,
   }),
@@ -33,13 +52,9 @@ vi.mock('react-i18next', () => ({
 interface RenderFooterOptions {
   agentFinished?: boolean;
   agentStarted?: boolean;
-  billboardItems?: unknown[];
   classicFinished?: boolean;
   desktop?: boolean;
-  enableBusinessFeatures?: boolean;
   enabled?: boolean;
-  hideGitHub?: boolean;
-  homeSidebar?: boolean;
   mobile?: boolean;
   readSlugs?: string[];
   serverConfigInit?: boolean;
@@ -72,13 +87,9 @@ const createGlobalState = (readSlugs: string[] = []) => ({
 const renderFooter = async ({
   agentFinished = false,
   agentStarted = false,
-  billboardItems = [],
   classicFinished = true,
   desktop = false,
   enabled = true,
-  enableBusinessFeatures = false,
-  homeSidebar = false,
-  hideGitHub = true,
   mobile = false,
   readSlugs = [],
   serverConfigInit = true,
@@ -93,7 +104,6 @@ const renderFooter = async ({
 
   mockGlobalState = createGlobalState(readSlugs);
   mockServerConfigState = {
-    enableBusinessFeatures,
     featureFlags: { enableAgentOnboarding: enabled },
     isMobile: mobile,
     serverConfigInit,
@@ -105,6 +115,7 @@ const renderFooter = async ({
     },
     defaultSettings: {},
     onboarding: classicFinished ? { finishedAt: '2026-04-14T00:00:00.000Z' } : undefined,
+    preference: { lab: {} },
     settings: { general: { isDevMode: false } },
   };
 
@@ -125,12 +136,7 @@ const renderFooter = async ({
     useAnalytics: createAnalyticsApi,
   }));
   vi.doMock('@/components/ChangelogModal', () => ({
-    default: vi.fn(),
-    openChangelogModal: vi.fn(),
-  }));
-  vi.doMock('@/components/FeedbackModal', () => ({
-    default: vi.fn(),
-    openFeedbackModal: vi.fn(),
+    default: () => null,
   }));
   vi.doMock('@/components/HighlightNotification', () => ({
     default: (props: {
@@ -163,28 +169,20 @@ const renderFooter = async ({
         </div>
       ) : null,
   }));
-  vi.doMock('@/features/Billboard', () => ({
-    default: () => null,
-  }));
-  vi.doMock('@/features/Billboard/MenuItems', () => ({
-    useBillboardMenuItems: () => billboardItems,
-  }));
-  vi.doMock('@/features/NavPanel', () => ({
-    useActiveNavKey: () => (homeSidebar ? 'home' : 'discover'),
-  }));
   vi.doMock('@/features/User/UserPanel/ThemeButton', () => ({
     default: () => null,
   }));
-  vi.doMock('@/features/Workspace/WorkspaceLink', () => ({
-    default: ({ children, to }: { children: React.ReactNode; to: string }) => (
-      <a href={to}>{children}</a>
-    ),
+  function createFeedbackModalApi() {
+    return { open: vi.fn() };
+  }
+  vi.doMock('@/hooks/useFeedbackModal', () => ({
+    useFeedbackModal: createFeedbackModalApi,
   }));
   function createNavLayoutState() {
     return {
       bottomMenuItems: [],
       footer: {
-        hideGitHub,
+        hideGitHub: true,
         layout: 'compact',
         showEvalEntry: false,
         showSettingsEntry: true,
@@ -210,10 +208,10 @@ const renderFooter = async ({
     return selector(mockServerConfigState);
   }
   vi.doMock('@/store/serverConfig', () => ({
-    serverConfigSelectors: {
-      enableBusinessFeatures: (s: Record<string, unknown>) => !!s.enableBusinessFeatures,
-    },
     useServerConfigStore: selectFromServerConfigStore,
+    featureFlagsSelectors: (state: Record<string, unknown>) => ({
+      hideGitHub: Boolean(state?.hideGitHub),
+    }),
   }));
   function selectFromUserStore(selector: (state: Record<string, unknown>) => unknown) {
     return selector(mockUserState);
@@ -240,13 +238,9 @@ afterEach(() => {
   vi.doUnmock('@lobechat/const');
   vi.doUnmock('@lobehub/analytics/react');
   vi.doUnmock('@/components/ChangelogModal');
-  vi.doUnmock('@/components/FeedbackModal');
   vi.doUnmock('@/components/HighlightNotification');
-  vi.doUnmock('@/features/Billboard');
-  vi.doUnmock('@/features/Billboard/MenuItems');
-  vi.doUnmock('@/features/NavPanel');
   vi.doUnmock('@/features/User/UserPanel/ThemeButton');
-  vi.doUnmock('@/features/Workspace/WorkspaceLink');
+  vi.doUnmock('@/hooks/useFeedbackModal');
   vi.doUnmock('@/hooks/useNavLayout');
   vi.doUnmock('@/store/global');
   vi.doUnmock('@/store/serverConfig');
@@ -328,84 +322,4 @@ describe('Footer agent onboarding promotion', () => {
 
     expect(screen.queryByTestId('highlight-notification')).not.toBeInTheDocument();
   });
-});
-
-describe('Footer help menu tracking', () => {
-  it('shows Get App immediately before GitHub on web', async () => {
-    const user = userEvent.setup();
-    await renderFooter({ hideGitHub: false });
-
-    await user.click(screen.getByRole('button', { name: 'Help' }));
-
-    const getApp = await screen.findByRole('link', { name: 'Get App' });
-    const github = screen.getByRole('link', { name: 'GitHub' });
-
-    expect(getApp).toHaveAttribute('href', '/downloads');
-    expect(getApp.compareDocumentPosition(github) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  }, 20000);
-
-  it('does not show Get App in desktop builds', async () => {
-    const user = userEvent.setup();
-    await renderFooter({ desktop: true, hideGitHub: false });
-
-    await user.click(screen.getByRole('button', { name: 'Help' }));
-
-    expect(screen.queryByRole('link', { name: 'Get App' })).not.toBeInTheDocument();
-  }, 20000);
-
-  it('tracks menu open with the visible item keys', async () => {
-    const user = userEvent.setup();
-    await renderFooter({ enableBusinessFeatures: true });
-
-    await user.click(screen.getByRole('button', { name: 'Help' }));
-
-    const openedCall = analyticsTrack.mock.calls.find(
-      ([event]) => event?.name === 'home_footer_menu_opened',
-    );
-    expect(openedCall).toBeTruthy();
-    expect((openedCall![0].properties.keys as string).split(',')).toContain('inviteFriend');
-  }, 20000);
-
-  it('tracks a unified click event when the invite friend entry is clicked', async () => {
-    const user = userEvent.setup();
-    await renderFooter({ enableBusinessFeatures: true });
-
-    await user.click(screen.getByRole('button', { name: 'Help' }));
-    await user.click(await screen.findByText('Invite a friend'));
-
-    expect(analyticsTrack).toHaveBeenCalledWith({
-      name: 'home_footer_menu_clicked',
-      properties: { key: 'inviteFriend', spm: 'homepage.footer.inviteFriend.clicked' },
-    });
-  }, 20000);
-
-  it('does not render the invite friend entry without business features', async () => {
-    const user = userEvent.setup();
-    await renderFooter({ enableBusinessFeatures: false });
-
-    await user.click(screen.getByRole('button', { name: 'Help' }));
-
-    expect(screen.queryByText('Invite a friend')).not.toBeInTheDocument();
-  }, 20000);
-
-  it('excludes billboard items from the opened keys to keep per-key CTR aligned', async () => {
-    const user = userEvent.setup();
-    await renderFooter({
-      billboardItems: [{ key: 'billboard-promo', label: 'Promo', onClick: vi.fn() }],
-      enableBusinessFeatures: true,
-      homeSidebar: true,
-    });
-
-    await user.click(screen.getByRole('button', { name: 'Help' }));
-
-    const openedCall = analyticsTrack.mock.calls.find(
-      ([event]) => event?.name === 'home_footer_menu_opened',
-    );
-    const keys = (openedCall![0].properties.keys as string).split(',');
-    // own items are tracked and reported as exposure...
-    expect(keys).toContain('inviteFriend');
-    // ...but billboard items (which emit their own billboard_* events) are not,
-    // so their CTR denominator never gets an orphaned exposure.
-    expect(keys).not.toContain('billboard-promo');
-  }, 20000);
 });
