@@ -338,6 +338,107 @@ describe('AgentRuntime', () => {
           'Tool not found: unknown_tool',
         );
       });
+
+      // A resume that carries a seeded assistant placeholder must stash it on
+      // state so the follow-up call_llm reuses it — otherwise the placeholder is
+      // orphaned as an empty assistant sibling. See the tools-activator op-split.
+      it('should stash the resume-seeded assistantMessageId as pendingAssistantMessageId', async () => {
+        const agent = new MockAgent();
+        agent.tools = {
+          calculator: vi.fn().mockResolvedValue({ result: 42 }),
+        };
+
+        const runtime = new AgentRuntime(agent);
+        const state = AgentRuntime.createInitialState({ operationId: 'test-session' });
+
+        const result = await runtime.step(state, {
+          operationId: 'test-session',
+          phase: 'human_approved_tool',
+          payload: {
+            approvedToolCall: {
+              id: 'call_123',
+              apiName: 'calculator',
+              identifier: 'calculator',
+              arguments: '{"expression": "2+2"}',
+              type: 'default',
+            },
+            assistantMessageId: 'msg_seeded_placeholder',
+            parentMessageId: 'tool-msg-1',
+            skipCreateToolMessage: true,
+          },
+          session: {
+            sessionId: 'test-session',
+            messageCount: 0,
+            status: 'idle',
+            stepCount: 0,
+          },
+        } as any);
+
+        expect(result.newState.pendingAssistantMessageId).toBe('msg_seeded_placeholder');
+      });
+
+      it('should stash a tool_result-seeded assistantMessageId as pendingAssistantMessageId', async () => {
+        const agent = new MockAgent();
+        agent.runner = vi.fn(async (_context: AgentRuntimeContext, state: AgentState) => {
+          expect(state.pendingAssistantMessageId).toBe('msg_seeded_placeholder');
+          return { type: 'finish' as const, reason: 'completed' as const, reasonDetail: 'Done' };
+        });
+
+        const runtime = new AgentRuntime(agent);
+        const state = AgentRuntime.createInitialState({ operationId: 'test-session' });
+
+        const result = await runtime.step(
+          state,
+          createTestContext('tool_result', {
+            assistantMessageId: 'msg_seeded_placeholder',
+            parentMessageId: 'tool-msg-1',
+          }),
+        );
+
+        expect(agent.runner).toHaveBeenCalled();
+        expect(result.newState.pendingAssistantMessageId).toBe('msg_seeded_placeholder');
+      });
+
+      it('should allow payload-less tool_result contexts to reach the agent runner', async () => {
+        const agent = new MockAgent();
+        agent.runner = vi.fn(async () => ({
+          type: 'finish' as const,
+          reason: 'completed' as const,
+          reasonDetail: 'Done',
+        }));
+
+        const runtime = new AgentRuntime(agent);
+        const state = AgentRuntime.createInitialState({ operationId: 'test-session' });
+
+        await expect(runtime.step(state, createTestContext('tool_result'))).resolves.toBeDefined();
+        expect(agent.runner).toHaveBeenCalled();
+      });
+
+      // Consume-once: once a call_llm step runs it has filled (or replaced) the
+      // seeded placeholder, so the seed must be cleared before the next step —
+      // otherwise a later assistant turn would reuse the id and overwrite it.
+      it('should clear pendingAssistantMessageId after a call_llm step', async () => {
+        const agent = new MockAgent();
+        const callLlmExecutor = vi.fn(async (_instruction: any, state: AgentState) => ({
+          events: [],
+          newState: structuredClone(state),
+        }));
+
+        const runtime = new AgentRuntime(agent, {
+          executors: { call_llm: callLlmExecutor },
+        });
+        const state = AgentRuntime.createInitialState({ operationId: 'test-session' });
+        state.pendingAssistantMessageId = 'msg_seeded_placeholder';
+
+        // MockAgent.runner returns a call_llm instruction for the tool_result phase.
+        const result = await runtime.step(
+          state,
+          createTestContext('tool_result', { parentMessageId: 'tool-msg-1' }),
+        );
+
+        expect(callLlmExecutor).toHaveBeenCalled();
+        expect(result.newState.pendingAssistantMessageId).toBeUndefined();
+      });
     });
 
     describe('human interaction executors', () => {
@@ -1170,6 +1271,57 @@ describe('AgentRuntime', () => {
       // Should have tools_batch_result phase in nextContext
       expect(result.nextContext?.phase).toBe('tools_batch_result');
       expect(result.nextContext?.payload).toHaveProperty('toolCount', 3);
+    });
+
+    it('should resolve blocked tools and continue without waiting for human approval', async () => {
+      class BlockedToolAgent implements Agent {
+        async runner(context: AgentRuntimeContext, _state: AgentState) {
+          if (context.phase === 'user_input') {
+            return {
+              payload: {
+                parentMessageId: 'assistant-1',
+                toolsCalling: [
+                  {
+                    apiName: 'bash',
+                    arguments: '{"command":"rm -rf /"}',
+                    id: 'call_blocked',
+                    identifier: 'bash',
+                    type: 'builtin' as const,
+                  },
+                ],
+              },
+              type: 'resolve_blocked_tools' as const,
+            };
+          }
+
+          return { reason: 'completed' as const, type: 'finish' as const };
+        }
+      }
+
+      const runtime = new AgentRuntime(new BlockedToolAgent());
+      const state = AgentRuntime.createInitialState({
+        messages: [{ content: 'Try a blocked tool', role: 'user' }],
+        operationId: 'blocked-tool-test',
+      });
+
+      const result = await runtime.step(state);
+
+      expect(result.newState.status).toBe('running');
+      expect(result.events).toEqual([
+        {
+          id: 'call_blocked',
+          result: {
+            content: 'Blocked by security/privacy.',
+            success: false,
+          },
+          type: 'tool_result',
+        },
+      ]);
+      expect(result.nextContext?.phase).toBe('tools_batch_result');
+      expect(result.nextContext?.payload).toMatchObject({
+        parentMessageId: 'assistant-1',
+        toolCount: 1,
+      });
     });
 
     // Regression test for Gemini 3 thoughtSignature must survive the

@@ -45,6 +45,7 @@ export interface AgentRuntimeContext {
 
   /** Session info (kept for backward compatibility, will be optional in the future) */
   session?: {
+    eventCount?: number;
     messageCount: number;
     sessionId: string;
     status: AgentState['status'];
@@ -115,6 +116,7 @@ export interface Agent {
 // ── Payloads ──────────────────────────────────────────────
 
 export interface CallLLMPayload {
+  allowedToolNames?: string[];
   isFirstMessage?: boolean;
   messages: any[];
   model: string;
@@ -172,6 +174,8 @@ export interface SubAgentTask {
    * run on the server.
    */
   runInClient?: boolean;
+  /** Agent selected by callAgent; defaults to the current runtime agent when omitted */
+  targetAgentId?: string;
   /** Timeout in milliseconds (optional, default 30 minutes) */
   timeout?: number;
 }
@@ -190,8 +194,6 @@ export interface SubAgentResultPayload {
     result?: string;
     /** Whether the sub-agent completed successfully */
     success: boolean;
-    /** Sub-agent message ID */
-    taskMessageId: string;
     /** Thread ID where the sub-agent was executed */
     threadId: string;
   };
@@ -211,8 +213,6 @@ export interface SubAgentsBatchResultPayload {
     result?: string;
     /** Whether the sub-agent completed successfully */
     success: boolean;
-    /** Sub-agent message ID */
-    taskMessageId: string;
     /** Thread ID where the sub-agent was executed */
     threadId: string;
   }>;
@@ -271,6 +271,20 @@ export interface AgentInstructionResolveAbortedTools extends AgentInstructionBas
     toolsCalling: ChatToolPayload[];
   };
   type: 'resolve_aborted_tools';
+}
+
+export interface AgentInstructionResolveBlockedTools extends AgentInstructionBase {
+  payload: {
+    /** Optional message to write into blocked tool result content */
+    blockedContent?: string;
+    /** Optional machine-readable blocked reason */
+    blockedReason?: string;
+    /** Parent message ID (assistant message) */
+    parentMessageId: string;
+    /** Tool calls that were blocked and need tool results */
+    toolsCalling: ChatToolPayload[];
+  };
+  type: 'resolve_blocked_tools';
 }
 
 // ─ Sub-Agent ─────────────────────────────────────────────
@@ -373,6 +387,7 @@ export type AgentInstruction =
   | AgentInstructionCallTool
   | AgentInstructionCallToolsBatch
   | AgentInstructionResolveAbortedTools
+  | AgentInstructionResolveBlockedTools
   // Sub-Agent
   | AgentInstructionExecSubAgent
   | AgentInstructionExecSubAgents

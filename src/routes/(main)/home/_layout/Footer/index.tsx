@@ -4,7 +4,8 @@ import { SOCIAL_URL } from '@lobechat/business-const';
 import { isDesktop } from '@lobechat/const';
 import { useAnalytics } from '@lobehub/analytics/react';
 import { type MenuProps } from '@lobehub/ui';
-import { ActionIcon, DropdownMenu, Flexbox, Icon } from '@lobehub/ui';
+import { DropdownMenu, Flexbox, Icon } from '@lobehub/ui';
+import { ActionIcon } from '@lobehub/ui/base-ui';
 import { DiscordIcon, GithubIcon } from '@lobehub/ui/icons';
 import {
   Book,
@@ -20,16 +21,17 @@ import {
 import type { ReactNode } from 'react';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
-import ChangelogModal from '@/components/ChangelogModal';
+import { useActiveWorkspaceId } from '@/business/client/hooks/useActiveWorkspaceId';
+import { openChangelogModal } from '@/components/ChangelogModal';
+import { openFeedbackModal } from '@/components/FeedbackModal';
 import HighlightNotification from '@/components/HighlightNotification';
 import { getRouteById } from '@/config/routes';
 import { DOCUMENTS_REFER_URL, GITHUB } from '@/const/url';
 import Billboard from '@/features/Billboard';
 import { useBillboardMenuItems } from '@/features/Billboard/MenuItems';
 import { useActiveNavKey } from '@/features/NavPanel';
-import { useFeedbackModal } from '@/hooks/useFeedbackModal';
 import { useCreateMenuItems } from '@/routes/(main)/home/_layout/hooks';
 import { useChatStore } from '@/store/chat';
 import { useGlobalStore } from '@/store/global';
@@ -101,9 +103,7 @@ const Footer = memo(() => {
       !!s.onboarding?.finishedAt,
       userGeneralSettingsSelectors.config(s).isDevMode,
     ]);
-  const [shouldLoadChangelog, setShouldLoadChangelog] = useState(false);
   const [isAgentOnboardingCardOpen, setIsAgentOnboardingCardOpen] = useState(false);
-  const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
   const [isProductHuntCardOpen, setIsProductHuntCardOpen] = useState(false);
 
   const [isAgentOnboardingPromoRead, isProductHuntNotificationRead, updateSystemStatus] =
@@ -187,20 +187,13 @@ const Footer = memo(() => {
     });
   }, [isWithinTimeWindow, shouldAutoShowProductHuntCard, trackPromotionEvent]);
 
-  const { open: openFeedbackModal } = useFeedbackModal();
-
-  const handleOpenChangelogModal = () => {
-    setShouldLoadChangelog(true);
-    setIsChangelogModalOpen(true);
-  };
-
-  const handleCloseChangelogModal = () => {
-    setIsChangelogModalOpen(false);
-  };
+  const handleOpenChangelogModal = useCallback(() => {
+    openChangelogModal();
+  }, []);
 
   const handleOpenFeedbackModal = useCallback(() => {
     openFeedbackModal();
-  }, [openFeedbackModal]);
+  }, []);
 
   const handleCloseAgentOnboardingCard = useCallback(() => {
     setIsAgentOnboardingCardOpen(false);
@@ -374,6 +367,7 @@ const Footer = memo(() => {
     ],
     [
       hideGitHub,
+      handleOpenChangelogModal,
       handleOpenFeedbackModal,
       handleOpenProductHuntCard,
       shouldShowProductHuntMenuEntry,
@@ -384,9 +378,10 @@ const Footer = memo(() => {
   );
 
   // Read sidebar order and hidden sections from store
+  const activeWorkspaceId = useActiveWorkspaceId();
   const [sidebarItems, hiddenSections] = useGlobalStore((s) => [
-    systemStatusSelectors.sidebarItems(s),
-    systemStatusSelectors.hiddenSidebarSections(s),
+    systemStatusSelectors.sidebarItems(activeWorkspaceId)(s),
+    systemStatusSelectors.hiddenSidebarSections(activeWorkspaceId)(s),
   ]);
 
   const bottomItemRoutes = useMemo(() => {
@@ -455,11 +450,6 @@ const Footer = memo(() => {
         </DropdownMenu>
       </Flexbox>
 
-      <ChangelogModal
-        open={isChangelogModalOpen}
-        shouldLoad={shouldLoadChangelog}
-        onClose={handleCloseChangelogModal}
-      />
       {activePromotion && (
         <HighlightNotification
           open

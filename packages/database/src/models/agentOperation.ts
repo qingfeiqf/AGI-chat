@@ -1,4 +1,7 @@
-import { and, eq } from 'drizzle-orm';
+import type { VerifyRunStatus } from '@lobechat/types';
+import { and, eq, gte, isNotNull, sql } from 'drizzle-orm';
+
+import { today } from '@/utils/time';
 
 import type {
   AgentOperationAppContext,
@@ -8,12 +11,26 @@ import type {
 } from '../schemas/agentOperations';
 import { agentOperations } from '../schemas/agentOperations';
 import type { LobeChatDatabase } from '../type';
+import { buildWorkspaceWhere } from '../utils/workspace';
+
+/**
+ * Verify rollup states. Aliases the single `VerifyRunStatus` source of truth in
+ * `@lobechat/types` (which also backs the `verify_status` column enum and
+ * `verify_runs.status`) so the three never drift.
+ */
+export type VerifyStatus = VerifyRunStatus;
 
 export interface RecordOperationStartParams {
   agentId?: string | null;
   appContext?: AgentOperationAppContext;
   chatGroupId?: string | null;
   maxSteps?: number;
+  /**
+   * Durable per-run metadata persisted on the operation row (jsonb). Carries the
+   * Agent Signal run marker so server-side tools can read it back from the row
+   * (`metadata.agentSignal`) at tool-call time.
+   */
+  metadata?: Record<string, unknown>;
   model?: string;
   modelRuntimeConfig?: Record<string, unknown>;
   operationId: string;
@@ -26,6 +43,16 @@ export interface RecordOperationStartParams {
   trigger?: string;
 }
 
+/** Terminal usage summed across every child operation of one parent. All-zero when it has none. */
+export interface ChildUsageRollup {
+  llmCalls: number;
+  toolCalls: number;
+  totalCost: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalTokens: number;
+}
+
 export interface RecordOperationCompletionParams {
   completedAt?: Date;
   completionReason?:
@@ -34,13 +61,21 @@ export interface RecordOperationCompletionParams {
     | 'interrupted'
     | 'max_steps'
     | 'cost_limit'
-    | 'waiting_for_human';
+    | 'waiting_for_human'
+    | 'waiting_for_async_tool';
   cost?: Record<string, unknown> | null;
   error?: AgentOperationError | null;
   interruption?: AgentOperationInterruption | null;
   llmCalls?: number | null;
+  /** Backfill the executed model when it's only known at completion (e.g. a
+   * heterogeneous run learns its real model from the CLI mid-stream). Omit to
+   * keep the value seeded at `recordStart`. */
+  model?: string | null;
   processingTimeMs?: number | null;
-  status: 'running' | 'waiting_for_human' | 'done' | 'error' | 'interrupted';
+  /** Backfill the executed provider — see {@link RecordOperationCompletionParams.model}. */
+  provider?: string | null;
+  status:
+    'running' | 'waiting_for_human' | 'waiting_for_async_tool' | 'done' | 'error' | 'interrupted';
   stepCount?: number | null;
   toolCalls?: number | null;
   totalCost?: number | null;
@@ -54,11 +89,16 @@ export interface RecordOperationCompletionParams {
 export class AgentOperationModel {
   private readonly db: LobeChatDatabase;
   private readonly userId: string;
+  private readonly workspaceId?: string;
 
-  constructor(db: LobeChatDatabase, userId: string) {
+  constructor(db: LobeChatDatabase, userId: string, workspaceId?: string) {
     this.db = db;
     this.userId = userId;
+    this.workspaceId = workspaceId;
   }
+
+  private ownership = () =>
+    buildWorkspaceWhere({ userId: this.userId, workspaceId: this.workspaceId }, agentOperations);
 
   /**
    * Insert the initial row when an operation is created. Idempotent via
@@ -72,6 +112,7 @@ export class AgentOperationModel {
       chatGroupId: params.chatGroupId ?? null,
       id: params.operationId,
       maxSteps: params.maxSteps,
+      ...(params.metadata ? { metadata: params.metadata } : {}),
       model: params.model,
       modelRuntimeConfig: params.modelRuntimeConfig,
       parentOperationId: params.parentOperationId ?? null,
@@ -83,6 +124,7 @@ export class AgentOperationModel {
       topicId: params.topicId ?? null,
       trigger: params.trigger,
       userId: this.userId,
+      workspaceId: this.workspaceId ?? null,
     };
 
     await this.db.insert(agentOperations).values(values).onConflictDoNothing();
@@ -115,6 +157,8 @@ export class AgentOperationModel {
       updates.totalOutputTokens = params.totalOutputTokens;
     if (params.llmCalls !== undefined) updates.llmCalls = params.llmCalls;
     if (params.toolCalls !== undefined) updates.toolCalls = params.toolCalls;
+    if (params.model !== undefined) updates.model = params.model;
+    if (params.provider !== undefined) updates.provider = params.provider;
     if (params.cost !== undefined) updates.cost = params.cost;
     if (params.usage !== undefined) updates.usage = params.usage;
     if (params.error !== undefined) updates.error = params.error;
@@ -124,15 +168,117 @@ export class AgentOperationModel {
     await this.db
       .update(agentOperations)
       .set(updates)
-      .where(and(eq(agentOperations.id, operationId), eq(agentOperations.userId, this.userId)));
+      .where(and(eq(agentOperations.id, operationId), this.ownership()));
+  }
+
+  /**
+   * Sum the terminal usage of every child operation forked from `parentOperationId`
+   * (`callSubAgent` children, isolated group members).
+   *
+   * A read-time SUM rather than an accumulation on the parent row, because the
+   * sub-agent completion bridge is contractually re-deliverable (QStash redelivery,
+   * plus the watchdog abandon path synthesizing the same call) and its safety rests
+   * on every side effect being overwrite-idempotent or CAS-guarded — an `x += child`
+   * is neither, and would double-count on the second delivery. Re-deriving the sum is
+   * exact no matter how many times it runs, and self-heals if a child row lands late.
+   *
+   * Children are already terminal by the time a parent completes: `persistCompletion`
+   * writes the child's row *before* dispatching its `onComplete` hooks, and the bridge
+   * that unparks the parent IS one of those hooks.
+   */
+  async sumChildUsage(parentOperationId: string): Promise<ChildUsageRollup> {
+    const [row] = await this.db
+      .select({
+        llmCalls: sql<string | null>`sum(${agentOperations.llmCalls})`,
+        toolCalls: sql<string | null>`sum(${agentOperations.toolCalls})`,
+        totalCost: sql<string | null>`sum(${agentOperations.totalCost})`,
+        totalInputTokens: sql<string | null>`sum(${agentOperations.totalInputTokens})`,
+        totalOutputTokens: sql<string | null>`sum(${agentOperations.totalOutputTokens})`,
+        totalTokens: sql<string | null>`sum(${agentOperations.totalTokens})`,
+      })
+      .from(agentOperations)
+      .where(and(eq(agentOperations.parentOperationId, parentOperationId), this.ownership()));
+
+    // `sum()` over zero rows is NULL, and numeric sums come back as strings.
+    const num = (value: string | null | undefined): number => {
+      const parsed = Number(value ?? 0);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    return {
+      llmCalls: num(row?.llmCalls),
+      toolCalls: num(row?.toolCalls),
+      totalCost: num(row?.totalCost),
+      totalInputTokens: num(row?.totalInputTokens),
+      totalOutputTokens: num(row?.totalOutputTokens),
+      totalTokens: num(row?.totalTokens),
+    };
   }
 
   async findById(operationId: string) {
     const [row] = await this.db
       .select()
       .from(agentOperations)
-      .where(and(eq(agentOperations.id, operationId), eq(agentOperations.userId, this.userId)))
+      .where(and(eq(agentOperations.id, operationId), this.ownership()))
       .limit(1);
     return row ?? null;
   }
+
+  /**
+   * Longest single operation (agent run) wall-clock execution time over the last
+   * year, in seconds. Wall clock (`completedAt - startedAt`) is the most faithful
+   * "task duration" — it spans the whole run including tool calls and waiting,
+   * not just LLM compute. Returns 0 when there are no completed operations.
+   */
+  async getMaxDurationSeconds(): Promise<number> {
+    const startDate = today().subtract(1, 'year').startOf('day').toDate();
+
+    const [row] = await this.db
+      .select({
+        seconds:
+          sql<number>`COALESCE(MAX(EXTRACT(EPOCH FROM (${agentOperations.completedAt} - ${agentOperations.startedAt}))), 0)`.mapWith(
+            Number,
+          ),
+      })
+      .from(agentOperations)
+      .where(
+        and(
+          this.ownership(),
+          isNotNull(agentOperations.startedAt),
+          isNotNull(agentOperations.completedAt),
+          gte(agentOperations.createdAt, startDate),
+        ),
+      );
+
+    return row?.seconds ?? 0;
+  }
+
+  /**
+   * Atomically flip a parked parent op from `waiting_for_async_tool` back to
+   * `running`. Returns true only for the single winner (affected === 1) so
+   * concurrent sub-op completions that lose the race no-op instead of
+   * double-resuming the parent.
+   */
+  async tryResumeFromAsyncTool(operationId: string): Promise<boolean> {
+    const rows = await this.db
+      .update(agentOperations)
+      .set({ status: 'running' })
+      .where(
+        and(
+          eq(agentOperations.id, operationId),
+          eq(agentOperations.userId, this.userId),
+          eq(agentOperations.status, 'waiting_for_async_tool'),
+        ),
+      )
+      .returning({ id: agentOperations.id });
+    return rows.length === 1;
+  }
+
+  // ============================================
+  // Verify (delivery checker)
+  // ============================================
+  // The verify plan snapshot + rollup status moved off this table onto
+  // `verify_runs` (the session entity), addressed via `VerifyRunModel`. The
+  // `verify_plan` / `verify_status` columns here are deprecated (see schema) and
+  // no longer read or written through this model.
 }

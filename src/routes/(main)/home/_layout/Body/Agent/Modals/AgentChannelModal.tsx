@@ -1,15 +1,15 @@
 'use client';
 
-import { Modal } from '@lobehub/ui';
+import { Modal } from '@lobehub/ui/base-ui';
 import { ConfigProvider } from 'antd';
-import { createStyles } from 'antd-style';
+import { createStaticStyles } from 'antd-style';
 import { memo, useCallback, useEffect, useState } from 'react';
 
 import ChannelPage from '@/routes/(main)/agent/channel';
 import { useAgentStore } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
 
-const useStyles = createStyles(({ css }) => ({
+const styles = createStaticStyles(({ css }) => ({
   modal: css`
     .ant-modal-content {
       overflow: hidden;
@@ -52,7 +52,6 @@ interface AgentChannelModalProps {
 }
 
 const AgentChannelModal = memo<AgentChannelModalProps>(({ agentId, open, title, onCancel }) => {
-  const { styles } = useStyles();
   const setActiveAgentId = useAgentStore((s) => s.setActiveAgentId);
   const agentMeta = useAgentStore(agentSelectors.getAgentMetaById(agentId));
   const agentTitle = title || agentMeta?.title || '助手';
@@ -71,7 +70,7 @@ const AgentChannelModal = memo<AgentChannelModalProps>(({ agentId, open, title, 
 
   return (
     <Modal
-      destroyOnClose
+      destroyOnHidden
       className={styles.modal}
       footer={null}
       open={open}

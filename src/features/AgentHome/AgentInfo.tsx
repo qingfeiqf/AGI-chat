@@ -1,22 +1,32 @@
 'use client';
 
-import { Avatar, Flexbox, Markdown, Skeleton, Text } from '@lobehub/ui';
+import { Flexbox, Markdown } from '@lobehub/ui';
+import { Avatar, Skeleton, Text } from '@lobehub/ui/base-ui';
 import isEqual from 'fast-deep-equal';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { DEFAULT_AVATAR, DEFAULT_INBOX_AVATAR } from '@/const/meta';
+import { contextSelectors, useConversationStore } from '@/features/Conversation/store';
 import { useAgentStore } from '@/store/agent';
-import { agentSelectors, builtinAgentSelectors } from '@/store/agent/selectors';
+import { agentByIdSelectors, agentSelectors, builtinAgentSelectors } from '@/store/agent/selectors';
 import { useUserStore } from '@/store/user';
 import { userGeneralSettingsSelectors } from '@/store/user/slices/settings/selectors';
 
 const AgentInfo = memo(() => {
   const { t } = useTranslation(['chat', 'welcome']);
-  const isLoading = useAgentStore(agentSelectors.isAgentConfigLoading);
-  const isInbox = useAgentStore(builtinAgentSelectors.isInboxAgent);
-  const meta = useAgentStore(agentSelectors.currentAgentMeta, isEqual);
-  const openingMessage = useAgentStore(agentSelectors.openingMessage);
+  // Scope the welcome to the conversation's agent, not the global
+  // `activeAgentId`. In the multi-tab desktop app `activeAgentId` is shared and
+  // can momentarily point at another tab's agent (or the inbox), which used to
+  // flash this card back to the inbox "Lobe AI" identity.
+  const agentId = useConversationStore(contextSelectors.agentId) || '';
+  const inboxAgentId = useAgentStore(builtinAgentSelectors.inboxAgentId);
+  const isInbox = !!inboxAgentId && agentId === inboxAgentId;
+  const isLoading = useAgentStore(agentByIdSelectors.isAgentConfigLoadingById(agentId));
+  const meta = useAgentStore(agentSelectors.getAgentMetaById(agentId), isEqual);
+  const openingMessage = useAgentStore(
+    (s) => agentSelectors.getAgentConfigById(agentId)(s)?.openingMessage || '',
+  );
   const fontSize = useUserStore(userGeneralSettingsSelectors.fontSize);
 
   const displayTitle = isInbox
@@ -33,10 +43,10 @@ const AgentInfo = memo(() => {
   if (isLoading) {
     return (
       <Flexbox gap={12}>
-        <Skeleton.Avatar active shape={'square'} size={64} />
-        <Skeleton.Button active style={{ height: 32, width: 200 }} />
+        <Skeleton.Avatar shape={'square'} size={64} />
+        <Skeleton height={32} width={200} />
         <Flexbox width={'min(100%, 640px)'}>
-          <Skeleton active paragraph={{ rows: 2 }} title={false} />
+          <Skeleton.Text rows={2} />
         </Flexbox>
       </Flexbox>
     );

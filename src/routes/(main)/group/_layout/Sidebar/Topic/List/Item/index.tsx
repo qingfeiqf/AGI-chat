@@ -1,18 +1,25 @@
+import { GROUP_CHAT_TOPIC_URL } from '@lobechat/const';
 import type { ChatTopicStatus } from '@lobechat/types';
-import { Flexbox, Icon, Skeleton, Tag } from '@lobehub/ui';
-import { createStaticStyles, cssVar } from 'antd-style';
-import { CheckCircle2, Hand, HashIcon, Loader2Icon, MessageSquareDashed } from 'lucide-react';
+import { Flexbox, Icon, Skeleton, Tag, Text, Tooltip } from '@lobehub/ui';
+import { createStaticStyles, cssVar, useTheme } from 'antd-style';
+import { HashIcon, MessageSquareDashed } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
 import { memo, Suspense, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useActiveWorkspaceSlug } from '@/business/client/hooks/useActiveWorkspaceSlug';
 import DotsLoading from '@/components/DotsLoading';
+import { TOPIC_STATUS_VISUALS } from '@/components/ExecutionStatus';
+import RingLoadingIcon from '@/components/RingLoading';
 import { isDesktop } from '@/const/version';
+import { useHasDraft } from '@/features/ChatInput/draftStorage';
 import NavItem from '@/features/NavPanel/components/NavItem';
 import { useFocusTopicPopup } from '@/features/TopicPopupGuard/useTopicPopupsRegistry';
+import { buildWorkspaceAwarePath } from '@/features/Workspace/workspaceAwarePath';
 import { useAgentGroupStore } from '@/store/agentGroup';
 import { useChatStore } from '@/store/chat';
 import { operationSelectors } from '@/store/chat/selectors';
+import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { useElectronStore } from '@/store/electron';
 import { useGlobalStore } from '@/store/global';
 
@@ -80,16 +87,22 @@ interface TopicItemProps {
 
 const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, status }) => {
   const { t } = useTranslation('topic');
+  const { isDarkMode } = useTheme();
+  // Same live-running ring as the agent sidebar topic rows (see List/Item there).
+  const loadingRingColor = isDarkMode
+    ? cssVar.colorWarningBorder
+    : `color-mix(in srgb, ${cssVar.colorWarning} 45%, transparent)`;
   const toggleMobileTopic = useGlobalStore((s) => s.toggleMobileTopic);
   const [activeGroupId, switchTopic] = useAgentGroupStore((s) => [s.activeGroupId, s.switchTopic]);
   const addTab = useElectronStore((s) => s.addTab);
+  const activeWorkspaceSlug = useActiveWorkspaceSlug();
   const focusTopicPopup = useFocusTopicPopup({ groupId: activeGroupId });
 
   // Construct href for cmd+click support
   const href = useMemo(() => {
     if (!activeGroupId || !id) return undefined;
-    return `/group/${activeGroupId}?topic=${id}`;
-  }, [activeGroupId, id]);
+    return buildWorkspaceAwarePath(GROUP_CHAT_TOPIC_URL(activeGroupId, id), activeWorkspaceSlug);
+  }, [activeGroupId, activeWorkspaceSlug, id]);
 
   const [editing, isLoading] = useChatStore((s) => [
     id ? s.topicRenamingId === id : false,
@@ -136,10 +149,18 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, stat
       toggleMobileTopic(false);
       return;
     }
-    addTab(`/group/${activeGroupId}?topic=${id}`);
+    addTab(buildWorkspaceAwarePath(GROUP_CHAT_TOPIC_URL(activeGroupId, id), activeWorkspaceSlug));
     switchTopic(id);
     toggleMobileTopic(false);
-  }, [id, activeGroupId, addTab, focusTopicPopup, switchTopic, toggleMobileTopic]);
+  }, [
+    id,
+    activeGroupId,
+    activeWorkspaceSlug,
+    addTab,
+    focusTopicPopup,
+    switchTopic,
+    toggleMobileTopic,
+  ]);
 
   const dropdownMenu = useTopicItemDropdownMenu({
     id,
@@ -148,6 +169,7 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, stat
   });
 
   const isCompleted = status === 'completed';
+  const isFailed = status === 'failed';
   const isRunning = status === 'running';
   const isWaitingForHuman = status === 'waitingForHuman';
 
@@ -193,14 +215,37 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, stat
     </span>
   );
 
+  // Surface a WeChat-style red "[Draft]" hint when this topic holds unsent
+  // input. Group drafts live in localStorage keyed by messageMapKey under the
+  // group scope; the default topic (no id) maps to the new-topic draft.
+  const draftKey = useMemo(
+    () =>
+      activeGroupId
+        ? messageMapKey({ agentId: '', groupId: activeGroupId, scope: 'group', topicId: id })
+        : undefined,
+    [activeGroupId, id],
+  );
+  const hasDraft = useHasDraft(draftKey);
+  const draftPrefix = hasDraft ? (
+    <Text fontSize={12} style={{ color: cssVar.colorError, flex: 'none' }}>
+      {t('draft')}
+    </Text>
+  ) : undefined;
+
   // For default topic (no id)
   if (!id) {
     return (
       <NavItem
         active={active}
+        slots={{ titlePrefix: draftPrefix }}
+        titleColor={cssVar.colorText}
         icon={
           isLoading ? (
-            <Icon spin color={cssVar.colorWarning} icon={Loader2Icon} size={'small'} />
+            <RingLoadingIcon
+              ringColor={loadingRingColor}
+              size={14}
+              style={{ color: cssVar.colorWarning }}
+            />
           ) : (
             <Icon color={cssVar.colorTextDescription} icon={MessageSquareDashed} size={'small'} />
           )
@@ -233,23 +278,32 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, stat
         disabled={editing}
         href={!editing ? href : undefined}
         title={title === '...' ? <DotsLoading gap={3} size={4} /> : title}
+        titleColor={cssVar.colorText}
         icon={(() => {
           if (isWaitingForHuman) {
-            return <Icon icon={Hand} size={'small'} style={{ color: cssVar.colorInfo }} />;
+            const visual = TOPIC_STATUS_VISUALS.waitingForHuman;
+            return <Icon icon={visual.icon} size={'small'} style={{ color: visual.color }} />;
           }
           if (isLoading || isRunning) {
             return (
-              <Icon spin icon={Loader2Icon} size={'small'} style={{ color: cssVar.colorWarning }} />
+              <RingLoadingIcon
+                ringColor={loadingRingColor}
+                size={14}
+                style={{ color: cssVar.colorWarning }}
+              />
+            );
+          }
+          if (isFailed) {
+            const visual = TOPIC_STATUS_VISUALS.failed;
+            return (
+              <Tooltip title={t('failedStatusTip')}>
+                <Icon icon={visual.icon} size={'small'} style={{ color: visual.color }} />
+              </Tooltip>
             );
           }
           if (isCompleted) {
-            return (
-              <Icon
-                icon={CheckCircle2}
-                size={'small'}
-                style={{ color: cssVar.colorTextDescription }}
-              />
-            );
+            const visual = TOPIC_STATUS_VISUALS.completed;
+            return <Icon icon={visual.icon} size={'small'} style={{ color: visual.color }} />;
           }
           return (
             <Icon icon={HashIcon} size={'small'} style={{ color: cssVar.colorTextDescription }} />
@@ -257,6 +311,7 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, stat
         })()}
         slots={{
           iconPostfix: unreadNode,
+          titlePrefix: draftPrefix,
         }}
         onClick={handleClick}
         onDoubleClick={() => void handleDoubleClick()}

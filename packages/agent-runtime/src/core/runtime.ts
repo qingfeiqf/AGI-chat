@@ -7,6 +7,7 @@ import type {
   AgentInstruction,
   AgentInstructionCallTool,
   AgentInstructionCallToolsBatch,
+  AgentInstructionResolveBlockedTools,
   AgentRuntimeContext,
   AgentState,
   Cost,
@@ -17,6 +18,7 @@ import type {
   ToolsCalling,
   Usage,
 } from '../types';
+import { isBlockedStatus } from '../utils/status';
 
 /**
  * Simplified Agent Runtime - The "Engine" that executes instructions from an "Agent" (Brain).
@@ -42,6 +44,7 @@ export class AgentRuntime {
       request_human_approve: this.createHumanApproveExecutor(),
       request_human_prompt: this.createHumanPromptExecutor(),
       request_human_select: this.createHumanSelectExecutor(),
+      resolve_blocked_tools: this.createResolveBlockedToolsExecutor(),
       // Config executors override built-in
       ...config.executors,
       // Agent provided executors have highest priority
@@ -108,10 +111,22 @@ export class AgentRuntime {
       if (runtimeContext.phase === 'human_approved_tool') {
         const approvedPayload = runtimeContext.payload as {
           approvedToolCall: ChatToolPayload;
+          assistantMessageId?: string;
           parentMessageId: string;
           skipCreateToolMessage: boolean;
         };
         const toolCalling = approvedPayload.approvedToolCall;
+
+        // The resume seeded an assistant placeholder (assistantMessageId) for
+        // this operation, but the first instruction here is a tool execution —
+        // not an LLM call — so nothing consumes the placeholder and it would be
+        // left as an empty orphan sibling once the follow-up call_llm creates
+        // its own message. Stash the id on state so the first call_llm after
+        // the tool result reuses the placeholder instead (consumed once, then
+        // cleared in the instruction loop below).
+        if (approvedPayload.assistantMessageId) {
+          newState.pendingAssistantMessageId = approvedPayload.assistantMessageId;
+        }
 
         rawInstructions = {
           payload: {
@@ -122,6 +137,17 @@ export class AgentRuntime {
           type: 'call_tool',
         };
       } else {
+        if (runtimeContext.phase === 'tool_result') {
+          const toolResultPayload = runtimeContext.payload as
+            | {
+                assistantMessageId?: string;
+              }
+            | undefined;
+          if (toolResultPayload?.assistantMessageId) {
+            newState.pendingAssistantMessageId = toolResultPayload.assistantMessageId;
+          }
+        }
+
         // Standard flow: Plan -> Execute
         rawInstructions = await this.agent.runner(runtimeContext, newState);
       }
@@ -191,13 +217,21 @@ export class AgentRuntime {
         // Update state
         currentState = result.newState;
 
+        // A call_llm consumes any resume-seeded assistant placeholder exactly
+        // once — it has now either reused that message id or created its own —
+        // so clear the seed before the next step. Otherwise a later assistant
+        // turn in the same operation would reuse the id and overwrite this one.
+        if (instruction.type === 'call_llm' && currentState.pendingAssistantMessageId) {
+          currentState.pendingAssistantMessageId = undefined;
+        }
+
         // Keep the last nextContext
         if (result.nextContext) {
           finalNextContext = result.nextContext;
         }
 
         // Stop execution if blocked
-        if (currentState.status === 'waiting_for_human' || currentState.status === 'interrupted') {
+        if (isBlockedStatus(currentState.status)) {
           break;
         }
       }
@@ -214,12 +248,10 @@ export class AgentRuntime {
       return {
         events: allEvents,
         newState: currentState,
-        // When execution is blocked (waiting for human or interrupted),
-        // clear nextContext so the outer loop stops instead of continuing
-        nextContext:
-          currentState.status === 'waiting_for_human' || currentState.status === 'interrupted'
-            ? undefined
-            : finalNextContext,
+        // When execution is blocked (waiting for human, waiting for an async
+        // tool result, or interrupted), clear nextContext so the outer loop
+        // stops instead of continuing
+        nextContext: isBlockedStatus(currentState.status) ? undefined : finalNextContext,
       };
     } catch (error) {
       const errorState = structuredClone(state);
@@ -568,6 +600,46 @@ export class AgentRuntime {
       };
 
       return { events, newState, nextContext };
+    };
+  }
+
+  /** Create blocked tools executor */
+  private createResolveBlockedToolsExecutor(): InstructionExecutor {
+    return async (instruction, state) => {
+      const { payload } = instruction as AgentInstructionResolveBlockedTools;
+      const newState = structuredClone(state);
+      const events: AgentEvent[] = [];
+
+      for (const toolCalling of payload.toolsCalling) {
+        const result = {
+          content: 'Blocked by security/privacy.',
+          success: false,
+        };
+
+        newState.messages.push({
+          content: result.content,
+          role: 'tool',
+          tool_call_id: toolCalling.id,
+        });
+        events.push({ id: toolCalling.id, result, type: 'tool_result' });
+      }
+
+      newState.lastModified = new Date().toISOString();
+      newState.status = 'running';
+
+      return {
+        events,
+        newState,
+        nextContext: {
+          operationId: this.operationId,
+          payload: {
+            parentMessageId: payload.parentMessageId,
+            toolCount: payload.toolsCalling.length,
+          },
+          phase: 'tools_batch_result',
+          session: this.createSessionContext(newState),
+        },
+      };
     };
   }
 

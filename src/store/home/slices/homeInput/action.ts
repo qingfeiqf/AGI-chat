@@ -1,5 +1,8 @@
 import { BUILTIN_AGENT_SLUGS } from '@lobechat/builtin-agents';
+import { CUSTOM_DOCUMENT_FILE_TYPE } from '@lobechat/const';
+import type { ContextSelection, PageSelection } from '@lobechat/types';
 
+import { stableWorkspaceAwareNavigate } from '@/features/Workspace/stableWorkspaceAwareNavigate';
 import { chatGroupService } from '@/services/chatGroup';
 import { documentService } from '@/services/document';
 import { getAgentStoreState } from '@/store/agent';
@@ -10,7 +13,7 @@ import { useGlobalStore } from '@/store/global';
 import { useGroupProfileStore } from '@/store/groupProfile';
 import { type HomeStore } from '@/store/home/store';
 import { type StoreSetter } from '@/store/types';
-import { getStableNavigate } from '@/utils/stableNavigate';
+import { markdownToTxt } from '@/utils/markdownToTxt';
 import { setNamespace } from '@/utils/storeDebug';
 
 import { type StarterMode } from './initialState';
@@ -18,9 +21,12 @@ import { type StarterMode } from './initialState';
 const n = setNamespace('homeInput');
 
 interface SendMessageWithEditorParams {
+  contextSelections?: ContextSelection[];
   editorData?: Record<string, any>;
   groupId?: string;
   message: string;
+  pageSelections?: PageSelection[];
+  workspaceSlug?: string | null;
 }
 
 /**
@@ -60,9 +66,12 @@ export class HomeInputActionImpl {
   };
 
   sendAsAgent = async ({
+    contextSelections,
     editorData,
     groupId,
     message,
+    pageSelections,
+    workspaceSlug,
   }: SendMessageWithEditorParams): Promise<string> => {
     this.#set({ homeInputLoading: true }, false, n('sendAsAgent/start'));
 
@@ -83,17 +92,32 @@ export class HomeInputActionImpl {
           model,
           provider,
           systemRole: message,
-          title: message?.slice(0, 50) || 'New Agent',
+          title: markdownToTxt(message ?? '').slice(0, 50) || 'New Agent',
         },
         groupId,
       });
+
+      // Sync the editing target into the chat store BEFORE the builder message
+      // is sent. Gateway mode reads `chatStore.activeAgentId` at send time to
+      // forward `editingAgentId` (see gateway.ts executeGatewayAgent), and the
+      // AgentBuilder tool `onAfterCall` reads it to refresh the correct agent's
+      // config. Setting it here — instead of waiting for AgentBuilderProvider's
+      // mount effect — removes the create-time race where the first tool call
+      // could target / refresh the wrong agent (left profile not refreshed).
+      if (result.agentId) {
+        useChatStore.setState(
+          { activeAgentId: result.agentId },
+          false,
+          'sendAsAgent/syncEditingAgentId',
+        );
+      }
 
       if (message.trim()) {
         useGlobalStore.getState().toggleAgentBuilderPanel(true);
       }
 
       // 3. Navigate to Agent profile page
-      getStableNavigate()?.(`/agent/${result.agentId}/profile`);
+      stableWorkspaceAwareNavigate(`/agent/${result.agentId}/profile`);
 
       // 4. Refresh agent list
       this.#get().refreshAgentList();
@@ -113,9 +137,15 @@ export class HomeInputActionImpl {
 
         if (agentBuilderId) {
           await sendMessage({
-            context: { agentId: agentBuilderId, scope: 'agent_builder' },
+            context: {
+              agentId: agentBuilderId,
+              scope: 'agent_builder',
+              ...(workspaceSlug ? { workspaceSlug } : {}),
+            },
+            contextSelections,
             editorData,
             message,
+            pageSelections,
           });
         }
       }
@@ -130,9 +160,12 @@ export class HomeInputActionImpl {
   };
 
   sendAsGroup = async ({
+    contextSelections,
     editorData,
     groupId,
     message,
+    pageSelections,
+    workspaceSlug,
   }: SendMessageWithEditorParams): Promise<string> => {
     this.#set({ homeInputLoading: true }, false, n('sendAsGroup/start'));
 
@@ -153,7 +186,7 @@ export class HomeInputActionImpl {
           systemPrompt: message,
         },
         groupId,
-        title: message?.slice(0, 50) || 'New Group',
+        title: markdownToTxt(message ?? '').slice(0, 50) || 'New Group',
       });
 
       // 3. Load groups and refresh
@@ -168,7 +201,7 @@ export class HomeInputActionImpl {
       }
 
       // 5. Navigate to Group profile page
-      getStableNavigate()?.(`/group/${group.id}/profile`);
+      stableWorkspaceAwareNavigate(`/group/${group.id}/profile`);
 
       // 6. Update groupAgentBuilder's model config and send initial message.
       // Hydrate first so we don't race with the group profile page's own init.
@@ -184,9 +217,15 @@ export class HomeInputActionImpl {
 
         const { sendMessage } = useChatStore.getState();
         await sendMessage({
-          context: { agentId: groupAgentBuilderId, scope: 'group_agent_builder' },
+          context: {
+            agentId: groupAgentBuilderId,
+            scope: 'group_agent_builder',
+            ...(workspaceSlug ? { workspaceSlug } : {}),
+          },
+          contextSelections,
           editorData,
           message,
+          pageSelections,
         });
       }
 
@@ -207,7 +246,13 @@ export class HomeInputActionImpl {
     this.#set({ inputActiveMode: null }, false, n('sendAsResearch'));
   };
 
-  sendAsWrite = async ({ editorData, message }: SendMessageWithEditorParams): Promise<string> => {
+  sendAsWrite = async ({
+    contextSelections,
+    editorData,
+    message,
+    pageSelections,
+    workspaceSlug,
+  }: SendMessageWithEditorParams): Promise<string> => {
     this.#set({ homeInputLoading: true }, false, n('sendAsWrite/start'));
 
     try {
@@ -224,12 +269,12 @@ export class HomeInputActionImpl {
       // 2. Create new Document
       const newDoc = await documentService.createDocument({
         editorData: '{}',
-        fileType: 'custom/document',
-        title: message?.slice(0, 50) || 'Untitled',
+        fileType: CUSTOM_DOCUMENT_FILE_TYPE,
+        title: markdownToTxt(message ?? '').slice(0, 50) || 'Untitled',
       });
 
       // 3. Navigate to Page
-      getStableNavigate()?.(`/page/${newDoc.id}`);
+      stableWorkspaceAwareNavigate(`/page/${newDoc.id}`);
 
       // 4. Update pageAgent's model config and send initial message. Hydrate
       // first to avoid the same race the agent/group flows hit.
@@ -243,9 +288,20 @@ export class HomeInputActionImpl {
 
         const { sendMessage } = useChatStore.getState();
         await sendMessage({
-          context: { agentId: pageAgentId, scope: 'page' },
+          // Pass the freshly created document id explicitly. The new PageEditor
+          // has not mounted yet, so the page editor runtime singleton may still
+          // be bound to the previously open document — relying on its fallback
+          // here would scope server-side PageAgent tools to the wrong document.
+          context: {
+            agentId: pageAgentId,
+            documentId: newDoc.id,
+            scope: 'page',
+            ...(workspaceSlug ? { workspaceSlug } : {}),
+          },
+          contextSelections,
           editorData,
           message,
+          pageSelections,
         });
       }
 

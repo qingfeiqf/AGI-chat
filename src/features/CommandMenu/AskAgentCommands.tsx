@@ -1,8 +1,10 @@
 import { DEFAULT_AVATAR, DEFAULT_INBOX_AVATAR } from '@lobechat/const';
-import { Avatar, preventDefault } from '@lobehub/ui';
+import { preventDefault } from '@lobehub/ui';
+import { Avatar } from '@lobehub/ui/base-ui';
 import { Command } from 'cmdk';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 
 import { useAgentStore } from '@/store/agent';
 import { builtinAgentSelectors } from '@/store/agent/selectors/builtinAgentSelectors';
@@ -17,7 +19,7 @@ const AskAgentCommands = memo(() => {
   const { search, setSearch, setSelectedAgent } = useCommandMenuContext();
 
   const inboxAgentId = useAgentStore(builtinAgentSelectors.inboxAgentId);
-  const allAgents = useHomeStore(homeAgentListSelectors.allAgents);
+  const allAgents = useHomeStore(useShallow(homeAgentListSelectors.allAgents));
 
   // Check if search starts with "@"
   const isAtMention = search.trimStart().startsWith('@');

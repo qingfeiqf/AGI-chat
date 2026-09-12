@@ -1,6 +1,7 @@
 'use client';
 
-import { ActionIcon, Avatar, Block, Flexbox, Popover, Skeleton, Text } from '@lobehub/ui';
+import { Block, Flexbox, Popover } from '@lobehub/ui';
+import { ActionIcon, Avatar, Skeleton, Text } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cssVar } from 'antd-style';
 import { ChevronsUpDownIcon } from 'lucide-react';
 import { memo, useState } from 'react';
@@ -39,8 +40,10 @@ const AgentSelect = memo(() => {
   const { t } = useTranslation(['chat', 'common']);
   const [open, setOpen] = useState(false);
 
-  // Trigger fetching the home agent list so the popover content is ready when opened.
-  useFetchAgentList();
+  // Trigger fetching the home agent list so the popover content is ready when
+  // opened. Keep `error` / `mutate` so a failed list fetch shows a Retry state
+  // in the popover instead of a permanent skeleton.
+  const { error: agentListError, mutate: refetchAgentList } = useFetchAgentList();
 
   const isLoading = useAgentStore(agentSelectors.isAgentConfigLoading);
   const inboxAgentId = useAgentStore(builtinAgentSelectors.inboxAgentId);
@@ -90,15 +93,17 @@ const AgentSelect = memo(() => {
   if (isLoading)
     return (
       <Flexbox horizontal align={'center'} gap={8} height={40} padding={4}>
-        <Skeleton.Button
-          active
-          size={'small'}
-          style={{ borderRadius: cssVar.borderRadius, height: 32, minWidth: 32, width: 32 }}
+        <Skeleton
+          height={32}
+          radius={cssVar.borderRadius}
+          style={{ minWidth: 32 }}
+          width={32}
         />
-        <Skeleton.Button
-          active
-          size={'small'}
-          style={{ borderRadius: cssVar.borderRadius, height: 16, minWidth: 96, opacity: 0.5 }}
+        <Skeleton
+          height={16}
+          radius={cssVar.borderRadius}
+          style={{ minWidth: 96, opacity: 0.5 }}
+          width={96}
         />
       </Flexbox>
     );
@@ -106,12 +111,19 @@ const AgentSelect = memo(() => {
   return (
     <Popover
       classNames={{ trigger: styles.trigger }}
-      content={<AgentList activeAgentId={displayAgentId} onSelect={handleSelect} />}
       nativeButton={false}
       open={open}
       placement="bottomLeft"
       styles={{ content: { padding: 0, width: 360 } }}
       trigger="click"
+      content={
+        <AgentList
+          activeAgentId={displayAgentId}
+          error={agentListError}
+          onRetry={() => refetchAgentList()}
+          onSelect={handleSelect}
+        />
+      }
       onOpenChange={setOpen}
     >
       <Block

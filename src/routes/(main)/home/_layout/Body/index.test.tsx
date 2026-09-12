@@ -48,7 +48,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('react-router-dom', () => ({
+vi.mock('react-router', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
     <a href={to}>{children}</a>
   ),
@@ -76,6 +76,10 @@ vi.mock('@/routes/(main)/home/features/Recents', () => ({
 }));
 
 vi.mock('./Agent', () => ({
+  default: ({ itemKey }: { itemKey: string }) => <div data-testid={`sidebar-item-${itemKey}`} />,
+}));
+
+vi.mock('./Private', () => ({
   default: ({ itemKey }: { itemKey: string }) => <div data-testid={`sidebar-item-${itemKey}`} />,
 }));
 
@@ -127,7 +131,7 @@ describe('Home sidebar body', () => {
     expect(mocks.updateSystemStatus).toHaveBeenCalledWith({ sidebarExpandedKeys: ['agent'] });
   });
 
-  it('renders items strictly in sidebarItems order with the spacer at its stored position', () => {
+  it('renders only top-section items, stopping at the spacer (bottom zone is the Footer)', () => {
     mocks.navLayout = {
       bottomMenuItems: [
         { key: 'image', title: 'Image', url: '/image' },
@@ -151,19 +155,18 @@ describe('Home sidebar body', () => {
     render(<Body />);
 
     const children = Array.from(screen.getByTestId('sidebar-body').children);
-    const spacerIndex = children.findIndex((child) =>
-      child.hasAttribute('data-sidebar-bottom-spacer'),
-    );
 
-    expect(spacerIndex).toBe(2);
+    // The spacer and every item after it belong to the sidebar Footer; the
+    // body renders only the top section.
+    expect(children.some((child) => child.hasAttribute('data-sidebar-bottom-spacer'))).toBe(false);
     expect(children[0]).toHaveTextContent('Pages');
     expect(children[1]).toHaveAttribute('data-testid', 'sidebar-accordion');
-    expect(children[3]).toHaveTextContent('Image');
-    expect(children[4]).toHaveTextContent('Tasks');
-    expect(children[5]).toHaveTextContent('Resource');
+    expect(children).toHaveLength(2);
+    expect(screen.queryByText('Image')).not.toBeInTheDocument();
+    expect(screen.queryByText('Resource')).not.toBeInTheDocument();
   });
 
-  it('keeps a top item that was dragged past the spacer in its new position', () => {
+  it('stops at the spacer even when items were dragged past it', () => {
     mocks.navLayout = {
       bottomMenuItems: [{ key: 'image', title: 'Image', url: '/image' }],
       topNavItems: [{ key: 'tasks', title: 'Tasks', url: '/tasks' }],
@@ -176,8 +179,8 @@ describe('Home sidebar body', () => {
     const children = Array.from(screen.getByTestId('sidebar-body').children);
 
     expect(children[0]).toHaveAttribute('data-testid', 'sidebar-accordion');
-    expect(children[1]).toHaveAttribute('data-sidebar-bottom-spacer');
-    expect(children[2]).toHaveTextContent('Image');
-    expect(children[3]).toHaveTextContent('Tasks');
+    expect(children).toHaveLength(1);
+    expect(screen.queryByText('Image')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tasks')).not.toBeInTheDocument();
   });
 });

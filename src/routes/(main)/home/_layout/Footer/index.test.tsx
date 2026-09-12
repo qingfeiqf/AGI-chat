@@ -1,10 +1,31 @@
 import type * as LobechatConst from '@lobechat/const';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const analyticsTrack = vi.fn();
+
+// Stub the base-ui ActionIcon — base-ui components need a MotionProvider the
+// app sets up globally but the unit env doesn't. Render a plain button so
+// title/aria-label queries keep working.
+vi.mock('@lobehub/ui/base-ui', () => ({
+  ActionIcon: ({
+    'aria-label': ariaLabel,
+    icon: _icon,
+    onClick,
+    title,
+  }: {
+    'aria-label'?: string;
+    icon?: unknown;
+    onClick?: () => void;
+    title?: string;
+  }) => (
+    <button aria-label={ariaLabel} onClick={onClick} title={title} type={'button'}>
+      {title ?? ariaLabel}
+    </button>
+  ),
+}));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -94,6 +115,7 @@ const renderFooter = async ({
     },
     defaultSettings: {},
     onboarding: classicFinished ? { finishedAt: '2026-04-14T00:00:00.000Z' } : undefined,
+    preference: { lab: {} },
     settings: { general: { isDevMode: false } },
   };
 
@@ -187,6 +209,9 @@ const renderFooter = async ({
   }
   vi.doMock('@/store/serverConfig', () => ({
     useServerConfigStore: selectFromServerConfigStore,
+    featureFlagsSelectors: (state: Record<string, unknown>) => ({
+      hideGitHub: Boolean(state?.hideGitHub),
+    }),
   }));
   function selectFromUserStore(selector: (state: Record<string, unknown>) => unknown) {
     return selector(mockUserState);

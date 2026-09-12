@@ -10,6 +10,8 @@ import { useFetchAgentList } from '@/hooks/useFetchAgentList';
 import AgentAvatar from '@/routes/(main)/home/_layout/Body/Agent/List/AgentItem/Avatar';
 import { AgentModalProvider } from '@/routes/(main)/home/_layout/Body/Agent/ModalProvider';
 import { useAgentStore } from '@/store/agent';
+import { useShallow } from 'zustand/react/shallow';
+
 import { useHomeStore } from '@/store/home';
 import { homeAgentListSelectors } from '@/store/home/selectors';
 
@@ -43,7 +45,7 @@ const AgentSelectorAction = memo<AgentSelectorActionProps>(({ onAgentChange }) =
   const [open, setOpen] = useState(false);
   const agentId = useConversationStore(conversationSelectors.agentId);
 
-  const agents = useHomeStore(homeAgentListSelectors.allAgents);
+  const agents = useHomeStore(useShallow(homeAgentListSelectors.allAgents));
   const isAgentListInit = useHomeStore(homeAgentListSelectors.isAgentListInit);
   const pageAgentId = useAgentStore((s) => s.builtinAgentIdMap['page-agent']);
   const pageAgentData = useAgentStore((s) => s.agentMap[pageAgentId || '']);

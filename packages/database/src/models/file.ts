@@ -1,6 +1,20 @@
 import type { QueryFileListParams } from '@lobechat/types';
 import { FilesTabs, SortType } from '@lobechat/types';
-import { and, asc, count, desc, eq, ilike, inArray, like, notExists, or, sum } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  like,
+  ne,
+  notExists,
+  or,
+  sum,
+} from 'drizzle-orm';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
 
 import type { FileItem, NewFile, NewGlobalFile } from '../schemas';
@@ -12,19 +26,45 @@ import {
   embeddings,
   fileChunks,
   files,
+  filesToSessions,
   globalFiles,
   knowledgeBaseFiles,
+  messages,
+  messagesFiles,
+  topics,
+  users,
 } from '../schemas';
 import type { LobeChatDatabase, Transaction } from '../type';
+import { buildWorkspacePayload, buildWorkspaceWhere } from '../utils/workspace';
+
+/**
+ * Minimal file descriptor used to bootstrap user-uploaded files into a sandbox.
+ */
+export interface SandboxInitFileItem {
+  fileType: string;
+  id: string;
+  name: string;
+  size: number;
+  /** S3 key / storage url, needs to be turned into a download url before use */
+  url: string;
+}
 
 export class FileModel {
   private readonly userId: string;
   private db: LobeChatDatabase;
+  private workspaceId?: string;
 
-  constructor(db: LobeChatDatabase, userId: string) {
+  constructor(db: LobeChatDatabase, userId: string, workspaceId?: string) {
     this.userId = userId;
     this.db = db;
+    this.workspaceId = workspaceId;
   }
+
+  private ownership = (callerAgentVisibility?: 'private' | 'public' | null) =>
+    buildWorkspaceWhere(
+      { callerAgentVisibility, userId: this.userId, workspaceId: this.workspaceId },
+      files,
+    );
 
   /**
    * Get file by ID without userId filter (public access)
@@ -66,17 +106,26 @@ export class FileModel {
 
       const result = (await tx
         .insert(files)
-        .values({ ...params, userId: this.userId })
+        .values(
+          buildWorkspacePayload(
+            { userId: this.userId, workspaceId: this.workspaceId },
+            { ...params },
+          ),
+        )
         .returning()) as FileItem[];
 
       const item = result[0]!;
 
       if (params.knowledgeBaseId) {
-        await tx.insert(knowledgeBaseFiles).values({
-          fileId: item.id,
-          knowledgeBaseId: params.knowledgeBaseId,
-          userId: this.userId,
-        });
+        await tx.insert(knowledgeBaseFiles).values(
+          buildWorkspacePayload(
+            { userId: this.userId, workspaceId: this.workspaceId },
+            {
+              fileId: item.id,
+              knowledgeBaseId: params.knowledgeBaseId,
+            },
+          ),
+        );
       }
 
       return item;
@@ -134,7 +183,7 @@ export class FileModel {
         .where(
           and(
             eq(documents.fileId, id),
-            eq(documents.userId, this.userId),
+            buildWorkspaceWhere({ userId: this.userId, workspaceId: this.workspaceId }, documents),
             eq(documents.sourceType, 'file'),
           ),
         );
@@ -150,7 +199,7 @@ export class FileModel {
       }
 
       // 4. Delete file record
-      await tx.delete(files).where(and(eq(files.id, id), eq(files.userId, this.userId)));
+      await tx.delete(files).where(and(eq(files.id, id), this.ownership()));
 
       if (!fileHash) return;
 
@@ -184,27 +233,38 @@ export class FileModel {
         totalSize: sum(files.size),
       })
       .from(files)
-      .where(eq(files.userId, this.userId));
+      .where(this.ownership());
 
     return parseInt(result[0].totalSize!) || 0;
   };
 
-  deleteMany = async (ids: string[], removeGlobalFile: boolean = true) => {
+  deleteMany = async (
+    ids: string[],
+    removeGlobalFile: boolean = true,
+    options?: { restrictToCreator?: boolean },
+  ) => {
     if (ids.length === 0) return [];
 
     return await this.db.transaction(async (trx) => {
       // 1. First get the file list to return the deleted files
       const fileList = await trx.query.files.findMany({
-        where: and(inArray(files.id, ids), eq(files.userId, this.userId)),
+        where: and(
+          inArray(files.id, ids),
+          this.ownership(),
+          // Workspace bulk deletes from non-owner members only touch their own rows.
+          options?.restrictToCreator ? eq(files.userId, this.userId) : undefined,
+        ),
       });
 
       if (fileList.length === 0) return [];
+
+      const targetIds = fileList.map((file) => file.id);
 
       // Extract file hashes that need to be checked
       const hashList = fileList.map((file) => file.fileHash!).filter(Boolean);
 
       // 2. Delete related chunks
-      await this.deleteFileChunks(trx as any, ids);
+      await this.deleteFileChunks(trx as any, targetIds);
 
       // 3. Delete mirror documents (sourceType='file') so they don't linger as
       // orphans with fileId set to null after the file row is removed.
@@ -212,8 +272,8 @@ export class FileModel {
         .delete(documents)
         .where(
           and(
-            inArray(documents.fileId, ids),
-            eq(documents.userId, this.userId),
+            inArray(documents.fileId, targetIds),
+            buildWorkspaceWhere({ userId: this.userId, workspaceId: this.workspaceId }, documents),
             eq(documents.sourceType, 'file'),
           ),
         );
@@ -227,7 +287,7 @@ export class FileModel {
       }
 
       // 5. Delete file records
-      await trx.delete(files).where(and(inArray(files.id, ids), eq(files.userId, this.userId)));
+      await trx.delete(files).where(and(inArray(files.id, targetIds), this.ownership()));
 
       // If global files don't need to be deleted, no storage object should be removed.
       if (!removeGlobalFile || hashList.length === 0) return [];
@@ -259,7 +319,7 @@ export class FileModel {
   };
 
   clear = async () => {
-    return this.db.delete(files).where(eq(files.userId, this.userId));
+    return this.db.delete(files).where(this.ownership());
   };
 
   query = async ({
@@ -269,11 +329,17 @@ export class FileModel {
     sorter,
     knowledgeBaseId,
     showFilesInKnowledgeBase,
-  }: QueryFileListParams = {}) => {
+    callerAgentVisibility,
+    visibility,
+  }: QueryFileListParams & {
+    callerAgentVisibility?: 'private' | 'public' | null;
+    visibility?: 'private' | 'public';
+  } = {}) => {
     // 1. Build where clause
     let whereClause = and(
       q ? ilike(files.name, `%${q}%`) : undefined,
-      eq(files.userId, this.userId),
+      this.ownership(callerAgentVisibility),
+      visibility ? eq(files.visibility, visibility) : undefined,
     );
     if (category && category !== FilesTabs.All && category !== FilesTabs.Home) {
       const fileTypePrefix = this.getFileTypePrefix(category as FilesTabs);
@@ -316,9 +382,18 @@ export class FileModel {
         name: files.name,
         size: files.size,
         updatedAt: files.updatedAt,
+        uploader: {
+          avatar: users.avatar,
+          fullName: users.fullName,
+          id: users.id,
+          username: users.username,
+        },
         url: files.url,
+        userId: files.userId,
+        visibility: files.visibility,
       })
-      .from(files);
+      .from(files)
+      .leftJoin(users, eq(files.userId, users.id));
 
     // 4. Add knowledge base query if needed
     if (knowledgeBaseId) {
@@ -344,20 +419,149 @@ export class FileModel {
     }
 
     // Otherwise, we are just filtering in the global files
-    return query.where(whereClause).orderBy(orderByClause);
+    const rows = await query.where(whereClause).orderBy(orderByClause);
+    // LEFT JOIN yields a fully-null uploader row when the user record is missing
+    // (e.g. deleted account). Collapse those to `null` so the client can rely on
+    // `uploader?.id` as the presence check.
+    return rows.map((row) => ({
+      ...row,
+      uploader: row.uploader?.id ? row.uploader : null,
+    }));
   };
 
   findByIds = async (ids: string[]) => {
     return this.db.query.files.findMany({
-      where: and(inArray(files.id, ids), eq(files.userId, this.userId)),
+      where: and(inArray(files.id, ids), this.ownership()),
     });
   };
 
   findById = async (id: string, trx?: Transaction) => {
     const database = trx || this.db;
     return database.query.files.findFirst({
-      where: and(eq(files.id, id), eq(files.userId, this.userId)),
+      where: and(eq(files.id, id), this.ownership()),
     });
+  };
+
+  /**
+   * Whether any of the given topics contains a user-owned file attached to a
+   * message. This intentionally checks for attachment presence rather than
+   * deletability: shared files should still be disclosed in the confirmation
+   * UI, while {@link findDeletableFilesByTopicId} remains responsible for
+   * preserving references that survive the topic deletion.
+   */
+  hasFilesByTopicIds = async (topicIds: string[]): Promise<boolean> => {
+    if (topicIds.length === 0) return false;
+
+    const [file] = await this.db
+      .select({ id: messagesFiles.fileId })
+      .from(messagesFiles)
+      .innerJoin(messages, eq(messagesFiles.messageId, messages.id))
+      .innerJoin(files, eq(messagesFiles.fileId, files.id))
+      .where(
+        and(
+          inArray(messages.topicId, topicIds),
+          eq(messagesFiles.userId, this.userId),
+          this.ownership(),
+        ),
+      )
+      .limit(1);
+
+    return Boolean(file);
+  };
+
+  /**
+   * Collect the user-uploaded files that should be pre-loaded into a sandbox for
+   * the given topic. Combines two associations and de-duplicates by file id:
+   * - files attached to messages inside the topic (`messages_files`)
+   * - files attached to the session that owns the topic (`files_to_sessions`)
+   */
+  findFilesToInitInSandbox = async (topicId: string): Promise<SandboxInitFileItem[]> => {
+    const columns = {
+      fileType: files.fileType,
+      id: files.id,
+      name: files.name,
+      size: files.size,
+      url: files.url,
+    };
+
+    const [messageFiles, sessionFiles] = await Promise.all([
+      this.db
+        .select(columns)
+        .from(messagesFiles)
+        .innerJoin(messages, eq(messagesFiles.messageId, messages.id))
+        .innerJoin(files, eq(messagesFiles.fileId, files.id))
+        .where(and(eq(messages.topicId, topicId), eq(messagesFiles.userId, this.userId))),
+      this.db
+        .select(columns)
+        .from(filesToSessions)
+        .innerJoin(topics, eq(topics.sessionId, filesToSessions.sessionId))
+        .innerJoin(files, eq(filesToSessions.fileId, files.id))
+        .where(and(eq(topics.id, topicId), eq(filesToSessions.userId, this.userId))),
+    ]);
+
+    const deduped = new Map<string, SandboxInitFileItem>();
+    for (const file of [...messageFiles, ...sessionFiles]) {
+      if (!deduped.has(file.id)) deduped.set(file.id, file);
+    }
+
+    return [...deduped.values()];
+  };
+
+  /**
+   * Find the user-uploaded files that can be safely deleted when a topic is
+   * removed: files attached to messages inside the topic that have **no other
+   * reference** surviving the deletion.
+   *
+   * Deleting a `files` row cascades to `messages_files` and `files_to_sessions`,
+   * so a file still referenced elsewhere would silently disappear from there.
+   * A candidate is therefore preserved (excluded) when it is still attached:
+   * - to a message in another topic (or a message with no topic), or
+   * - at the session level (`files_to_sessions`), which outlives a single topic.
+   *
+   * Session-level files are likewise never returned, matching the behaviour
+   * documented on {@link findFilesToInitInSandbox}.
+   */
+  findDeletableFilesByTopicId = async (topicId: string): Promise<string[]> => {
+    const candidates = await this.db
+      .selectDistinct({ id: messagesFiles.fileId })
+      .from(messagesFiles)
+      .innerJoin(messages, eq(messagesFiles.messageId, messages.id))
+      .where(and(eq(messages.topicId, topicId), eq(messagesFiles.userId, this.userId)));
+
+    const candidateIds = candidates.map((row) => row.id);
+    if (candidateIds.length === 0) return [];
+
+    const [messageRefsOutsideTopic, sessionRefs] = await Promise.all([
+      // same file attached to a message in a different topic (or no topic)
+      this.db
+        .selectDistinct({ id: messagesFiles.fileId })
+        .from(messagesFiles)
+        .innerJoin(messages, eq(messagesFiles.messageId, messages.id))
+        .where(
+          and(
+            inArray(messagesFiles.fileId, candidateIds),
+            eq(messagesFiles.userId, this.userId),
+            or(ne(messages.topicId, topicId), isNull(messages.topicId)),
+          ),
+        ),
+      // same file attached at the session level — survives topic deletion
+      this.db
+        .selectDistinct({ id: filesToSessions.fileId })
+        .from(filesToSessions)
+        .where(
+          and(
+            inArray(filesToSessions.fileId, candidateIds),
+            eq(filesToSessions.userId, this.userId),
+          ),
+        ),
+    ]);
+
+    const referencedElsewhere = new Set<string>([
+      ...messageRefsOutsideTopic.map((row) => row.id),
+      ...sessionRefs.map((row) => row.id),
+    ]);
+
+    return candidateIds.filter((id) => !referencedElsewhere.has(id));
   };
 
   countFilesByHash = async (hash: string) => {
@@ -375,7 +579,40 @@ export class FileModel {
     this.db
       .update(files)
       .set({ ...value, updatedAt: new Date() })
-      .where(and(eq(files.id, id), eq(files.userId, this.userId)));
+      .where(and(eq(files.id, id), this.ownership()));
+
+  /**
+   * Publish a private file into the workspace. Thin wrapper around
+   * `setVisibility(fileId, 'public')`; kept as a named method for the TRPC
+   * `publishFileToWorkspace` procedure and existing callers.
+   */
+  publishToWorkspace = async (fileId: string) => this.setVisibility(fileId, 'public');
+
+  /**
+   * Flip a file's `visibility`. Bidirectional companion to `publishToWorkspace`.
+   * The combined `user_id = ?` + `visibility = fromVisibility` guards lock the
+   * operation to the creator's own row and make it idempotent against rows
+   * already at the target visibility.
+   *
+   * Unpublishing is safe by design — after the flip, `buildWorkspaceWhere` and
+   * any downstream file-access checks hide the file from other members on the
+   * next read; blobs already fetched by clients stay cached until they expire.
+   */
+  setVisibility = async (fileId: string, visibility: 'private' | 'public') => {
+    const fromVisibility = visibility === 'public' ? 'private' : 'public';
+
+    return this.db
+      .update(files)
+      .set({ updatedAt: new Date(), visibility })
+      .where(
+        and(
+          eq(files.id, fileId),
+          this.ownership(),
+          eq(files.userId, this.userId),
+          eq(files.visibility, fromVisibility),
+        ),
+      );
+  };
 
   /**
    * get the corresponding file type prefix according to FilesTabs
@@ -405,10 +642,7 @@ export class FileModel {
 
   findByNames = async (fileNames: string[]) =>
     this.db.query.files.findMany({
-      where: and(
-        or(...fileNames.map((name) => like(files.name, `${name}%`))),
-        eq(files.userId, this.userId),
-      ),
+      where: and(or(...fileNames.map((name) => like(files.name, `${name}%`))), this.ownership()),
     });
 
   // Abstract common method for deleting chunks
@@ -459,5 +693,92 @@ export class FileModel {
     await trx.delete(fileChunks).where(inArray(fileChunks.fileId, fileIds));
 
     return chunkIds;
+  };
+
+  // ========== Transfer / Copy ==========
+
+  /**
+   * Transfer a single file (not a folder — folders live in `documents` and are
+   * handled by `DocumentModel.transferTo`, which already cascades into `files`
+   * via `parentId`). Updates ownership + knowledgeBaseFiles linkage so the
+   * file remains visible in the target scope's resource manager.
+   */
+  transferTo = async (
+    fileId: string,
+    targetWorkspaceId: string | null,
+    targetUserId: string,
+    targetVisibility?: 'private' | 'public',
+  ): Promise<{ fileId: string }> => {
+    return this.db.transaction(async (trx) => {
+      const file = await trx.query.files.findFirst({
+        where: and(eq(files.id, fileId), this.ownership()),
+      });
+      if (!file) throw new Error('File not found');
+
+      const ownershipUpdate = { userId: targetUserId, workspaceId: targetWorkspaceId };
+      // Visibility only applies when landing in a workspace.
+      const visibilityUpdate =
+        targetWorkspaceId && targetVisibility ? { visibility: targetVisibility } : {};
+
+      await trx
+        .update(files)
+        .set({ ...ownershipUpdate, ...visibilityUpdate, updatedAt: new Date() })
+        .where(eq(files.id, fileId));
+
+      // Knowledge base links are scoped per-user; keep them pointed at the new owner.
+      await trx
+        .update(knowledgeBaseFiles)
+        .set({ userId: targetUserId })
+        .where(eq(knowledgeBaseFiles.fileId, fileId));
+
+      return { fileId };
+    });
+  };
+
+  /**
+   * Clone a file record into another workspace / personal scope. The physical
+   * blob is shared via `fileHash` → `globalFiles`, so we only copy the row. AI
+   * index references (`chunkTaskId` / `embeddingTaskId`) are reset; the new
+   * scope is expected to re-index lazily.
+   */
+  copyToWorkspace = async (
+    fileId: string,
+    targetWorkspaceId: string | null,
+    targetUserId: string,
+    targetVisibility?: 'private' | 'public',
+  ): Promise<{ fileId: string }> => {
+    return this.db.transaction(async (trx) => {
+      const file = await trx.query.files.findFirst({
+        where: and(eq(files.id, fileId), this.ownership()),
+      });
+      if (!file) throw new Error('File not found');
+
+      // Visibility only applies when landing in a workspace.
+      const visibilityOverride =
+        targetWorkspaceId && targetVisibility ? { visibility: targetVisibility } : {};
+
+      const inserted = (await trx
+        .insert(files)
+        .values({
+          chunkTaskId: null,
+          clientId: null,
+          embeddingTaskId: null,
+          fileHash: file.fileHash,
+          fileType: file.fileType,
+          metadata: { ...(file.metadata as Record<string, unknown>), duplicatedFrom: file.id },
+          name: file.name,
+          // parentId would dangle in target scope; the user can drag it under a folder later.
+          parentId: null,
+          size: file.size,
+          source: file.source,
+          url: file.url,
+          userId: targetUserId,
+          workspaceId: targetWorkspaceId,
+          ...visibilityOverride,
+        } as NewFile)
+        .returning({ id: files.id })) as { id: string }[];
+
+      return { fileId: inserted[0]!.id };
+    });
   };
 }

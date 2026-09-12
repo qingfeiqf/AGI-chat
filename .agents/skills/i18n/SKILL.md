@@ -1,6 +1,6 @@
 ---
 name: i18n
-description: "LobeHub internationalization with react-i18next. Use when adding any user-facing string in `.tsx`/`.ts` files, creating or renaming a key under `src/locales/default/{namespace}.ts`, deciding the `{feature}.{context}.{action}` flat-key pattern, wiring a new namespace into `src/locales/default/index.ts`, or translating zh-CN/en-US JSON for dev preview. Triggers on `useTranslation`, `t('foo.bar')`, `i18next.t`, `{{variable}}` interpolation, hardcoded UI strings (zh or en) that should be extracted, 'add i18n', '加 i18n key', '翻译', 'locale key', 'namespace', 'pnpm i18n'."
+description: 'LobeHub i18n with react-i18next. Use for user-facing strings, locale keys, namespaces, useTranslation, t(), interpolation, zh-CN/en-US previews, hardcoded UI copy, or bun run i18n.'
 user-invocable: false
 ---
 
@@ -8,8 +8,8 @@ user-invocable: false
 
 - Default language: English (en-US)
 - Framework: react-i18next
-- **Only edit files in `src/locales/default/`** - Never edit JSON files in `locales/`
-- Run `pnpm i18n` to generate translations (or manually translate zh-CN/en-US for dev preview)
+- **Only edit files in `packages/locales/src/default/`** - Never edit JSON files in `locales/` (except hand-written en-US/zh-CN previews)
+- Run `bun run i18n` to generate translations (or manually translate zh-CN/en-US for dev preview)
 
 ## Key Naming Convention
 
@@ -51,10 +51,10 @@ export default {
 
 ## Workflow
 
-1. Add keys to `src/locales/default/{namespace}.ts`
-2. Export new namespace in `src/locales/default/index.ts`
+1. Add keys to `packages/locales/src/default/{namespace}.ts`
+2. Export new namespace in `packages/locales/src/default/index.ts`
 3. For dev preview: manually translate `locales/zh-CN/{namespace}.json` and `locales/en-US/{namespace}.json`
-4. Remind the user to run `pnpm i18n` before creating PR — do NOT run it yourself (very slow)
+4. Remind the user to run `bun run i18n` before creating PR — do NOT run it yourself (very slow)
 
 ## Usage
 

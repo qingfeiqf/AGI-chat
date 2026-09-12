@@ -1,9 +1,9 @@
-import { DESKTOP_HEADER_ICON_SMALL_SIZE, SESSION_CHAT_URL } from '@lobechat/const';
+import { AGENT_CHAT_URL,DESKTOP_HEADER_ICON_SMALL_SIZE } from '@lobechat/const';
 import { HETEROGENEOUS_TYPE_LABELS } from '@lobechat/heterogeneous-agents';
 import { type SidebarAgentItem } from '@lobechat/types';
-import { ActionIcon, Flexbox, Icon, Tag, Tooltip } from '@lobehub/ui';
-import { Dropdown } from 'antd';
-import { createStyles } from 'antd-style';
+import { type ContextMenuItem,Flexbox, Icon, showContextMenu, Tooltip } from '@lobehub/ui';
+import { ActionIcon, Tag } from '@lobehub/ui/base-ui';
+import { createStaticStyles, cx } from 'antd-style';
 import {
   ClipboardList,
   History,
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { type CSSProperties, type DragEvent, memo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import { usePrefetchAgent } from '@/hooks/usePrefetchAgent';
 import { useAgentStore } from '@/store/agent';
@@ -30,7 +30,7 @@ import SidebarTopicList from '../SidebarTopicList';
 import Avatar from './Avatar';
 import { useAgentDropdownMenu } from './useDropdownMenu';
 
-const useStyles = createStyles(({ css, cssVar }) => ({
+const styles = createStaticStyles(({ css, cssVar }) => ({
   outerContainer: css`
     position: relative;
 
@@ -174,8 +174,15 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
     title,
     pinned,
     heterogeneousType,
+    slug,
+    userId,
+    visibility,
     description: itemDescription,
   } = item;
+  // Unread count is server-computed (topics.status === 'unread') and carried on
+  // the sidebar list item, so it stays accurate across agents whose topics
+  // aren't loaded into the chat store on this client.
+  const unreadCount = item.unreadCount ?? 0;
   const { t } = useTranslation('chat');
   const { openCreateGroupModal, openAgentTasksModal } = useAgentModal();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -199,8 +206,7 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
   // Prefer agent store description (real-time), fall back to sidebar item's database value
   const description = agentMeta?.description || itemDescription || '';
 
-  const isLoading = useChatStore(operationSelectors.isAgentRunning(id));
-  const unreadCount = useChatStore(operationSelectors.agentUnreadCount(id));
+  const isLoading = useChatStore(operationSelectors.isAgentVisiblyRunning(id));
   const displayTitle = currentTitle || t('untitledAgent');
 
   const heterogeneousLabel = heterogeneousType
@@ -212,7 +218,7 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
   const hoverPaddingRight = hoverIconCount * 28 + (hoverIconCount - 1) * 2 + 8; // icons + gaps + margin
 
   const navigate = useNavigate();
-  const agentUrl = SESSION_CHAT_URL(id, false);
+  const agentUrl = AGENT_CHAT_URL(id, false);
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true);
@@ -245,8 +251,8 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
   );
 
   const handleOpenCreateGroupModal = useCallback(() => {
-    openCreateGroupModal(id);
-  }, [id, openCreateGroupModal]);
+    openCreateGroupModal(id, visibility);
+  }, [id, openCreateGroupModal, visibility]);
 
   const handleCardClick = useCallback(() => {
     navigate(agentUrl);
@@ -263,11 +269,15 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
   const dropdownMenu = useAgentDropdownMenu({
     anchor,
     avatar: typeof currentAvatar === 'string' ? currentAvatar : undefined,
+    backgroundColor: backgroundColor || undefined,
     group: undefined,
     id,
     openCreateGroupModal: handleOpenCreateGroupModal,
     pinned: pinned ?? false,
+    slug,
     title: displayTitle,
+    userId,
+    visibility,
   });
 
   const avatarNode = (
@@ -276,8 +286,6 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
       avatarBackground={currentBackgroundColor || undefined}
     />
   );
-
-  const { styles, cx } = useStyles();
 
   return (
     <Flexbox
@@ -292,14 +300,17 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <Dropdown menu={{ items: dropdownMenu() as any }} trigger={['contextMenu']}>
-        <Flexbox
-          horizontal
-          align="center"
-          className={cx(styles.container, isSelected && styles.containerActive)}
-          justify="space-between"
-          onClick={handleCardClick}
-        >
+      <Flexbox
+        horizontal
+        align="center"
+        className={cx(styles.container, isSelected && styles.containerActive)}
+        justify="space-between"
+        onClick={handleCardClick}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          showContextMenu(dropdownMenu() as unknown as ContextMenuItem[]);
+        }}
+      >
           <Flexbox horizontal align="center" gap={10} style={{ minWidth: 0, flex: 1 }}>
             <span className={styles.avatarWrapper}>
               {avatarNode}
@@ -370,17 +381,16 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
                         title="助手任务"
                         onClick={(e) => handleActionClick(e, () => openAgentTasksModal(id))}
                       />
-                      <Dropdown menu={{ items: dropdownMenu() as any }} trigger={['click']}>
-                        <ActionIcon
-                          icon={MoreVertical}
-                          size={DESKTOP_HEADER_ICON_SMALL_SIZE}
-                          title="更多操作"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                          }}
-                        />
-                      </Dropdown>
+                      <ActionIcon
+                        icon={MoreVertical}
+                        size={DESKTOP_HEADER_ICON_SMALL_SIZE}
+                        title="更多操作"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          showContextMenu(dropdownMenu() as unknown as ContextMenuItem[]);
+                        }}
+                      />
                     </>
                   )}
                 </div>
@@ -391,7 +401,6 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
             </Flexbox>
           </Flexbox>
         </Flexbox>
-      </Dropdown>
 
       {/* History topic list inline */}
       {isSelected && showHistory && <SidebarTopicList agentId={id} />}

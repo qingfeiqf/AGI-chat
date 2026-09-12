@@ -1,5 +1,6 @@
 import type { TaskDetailSubtask } from '@lobechat/types';
-import { ActionIcon, Block, Flexbox, Icon, showContextMenu, Text } from '@lobehub/ui';
+import { Block, Flexbox, Icon, showContextMenu } from '@lobehub/ui';
+import { ActionIcon, confirmModal, Text } from '@lobehub/ui/base-ui';
 import { App, ConfigProvider, Tree } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { cssVar } from 'antd-style';
@@ -8,6 +9,7 @@ import type { Key, MouseEvent } from 'react';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { usePermission } from '@/hooks/usePermission';
 import { taskService } from '@/services/task';
 import { useTaskStore } from '@/store/task';
 import { taskDetailSelectors } from '@/store/task/selectors';
@@ -23,6 +25,7 @@ import { useTaskContextMenuActions } from '../features/useTaskItemContextMenu';
 import AccordionArrowIcon from '../shared/AccordionArrowIcon';
 import { useNavigateToTaskDetail } from '../shared/taskDetailPath';
 import RunSubtasksPreview from './RunSubtasksPreview';
+import TopicStatusIcon from './TopicStatusIcon';
 
 type TaskStatus = 'backlog' | 'canceled' | 'completed' | 'failed' | 'paused' | 'running';
 
@@ -52,6 +55,7 @@ const buildTree = (subtasks: TaskDetailSubtask[]): TaskTreeNode[] =>
 const SubtaskTitle = memo<{ task: TaskDetailSubtask }>(({ task }) => {
   const status = toTaskStatus(task.status);
   const isRunning = status === 'running';
+  const hasRunningTopic = Boolean(task.runningTopic);
   const hasName = !!task.name;
 
   return (
@@ -72,7 +76,9 @@ const SubtaskTitle = memo<{ task: TaskDetailSubtask }>(({ task }) => {
         style={{ alignItems: 'center', display: 'inline-flex', flex: 'none' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <TaskStatusTag size={14} status={status} taskIdentifier={task.identifier} />
+        <TaskStatusTag size={14} status={status} taskIdentifier={task.identifier}>
+          {hasRunningTopic ? <TopicStatusIcon size={14} status="running" /> : undefined}
+        </TaskStatusTag>
       </span>
       {hasName && (
         <Text fontSize={13} style={{ flex: 'none' }} type={'secondary'}>
@@ -125,8 +131,9 @@ const toTreeData = (tree: TaskTreeNode[]): DataNode[] => {
 
 const TaskSubtasks = memo(() => {
   const { t } = useTranslation('chat');
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const navigateToTaskDetail = useNavigateToTaskDetail();
+  const { allowed: canEditTask, reason } = usePermission('create_content');
   const agentId = useTaskStore(taskDetailSelectors.activeTaskAgentId);
   const subtasks = useTaskStore(taskDetailSelectors.activeTaskSubtasks);
   const taskId = useTaskStore(taskDetailSelectors.activeTaskId);
@@ -165,6 +172,7 @@ const TaskSubtasks = memo(() => {
 
   const handleRightClick = useCallback(
     ({ event, node }: { event: MouseEvent; node: { key: Key } }) => {
+      if (!canEditTask) return;
       const subtask = subtaskMap.get(String(node.key));
       if (!subtask) return;
       event.preventDefault();
@@ -183,12 +191,16 @@ const TaskSubtasks = memo(() => {
         status: subtask.status,
       });
     },
-    [subtaskMap, buildItems, installKeyboardHandlers],
+    [canEditTask, subtaskMap, buildItems, installKeyboardHandlers],
   );
 
-  const toggleCreating = useCallback(() => setIsCreating((prev) => !prev), []);
+  const toggleCreating = useCallback(() => {
+    if (!canEditTask) return;
+    setIsCreating((prev) => !prev);
+  }, [canEditTask]);
 
   const handleRunAll = useCallback(async () => {
+    if (!canEditTask) return;
     if (!taskId || isPlanning) return;
     setIsPlanning(true);
     try {
@@ -208,9 +220,8 @@ const TaskSubtasks = memo(() => {
       }
 
       const canRun = plan.totalRunnable > 0;
-      modal.confirm({
+      confirmModal({
         cancelText: t('taskDetail.runAll.cancel'),
-        centered: true,
         content: <RunSubtasksPreview plan={plan} />,
         okButtonProps: canRun ? undefined : { disabled: true },
         okText: t('taskDetail.runAll.confirm', { count: plan.totalRunnable }),
@@ -232,7 +243,6 @@ const TaskSubtasks = memo(() => {
           }
         },
         title: t('taskDetail.runAll.title'),
-        width: 520,
       });
     } catch (error) {
       console.error('[TaskSubtasks] Failed to plan subtasks:', error);
@@ -240,7 +250,7 @@ const TaskSubtasks = memo(() => {
     } finally {
       setIsPlanning(false);
     }
-  }, [taskId, isPlanning, message, modal, t, runReadySubtasks]);
+  }, [canEditTask, taskId, isPlanning, message, t, runReadySubtasks]);
 
   if (!taskId) return null;
 
@@ -280,17 +290,18 @@ const TaskSubtasks = memo(() => {
             </Flexbox>
             <Flexbox horizontal align="center" gap={4}>
               <ActionIcon
-                disabled={isPlanning}
+                disabled={!canEditTask || isPlanning}
                 icon={PlayCircle}
                 loading={isPlanning}
                 size="small"
-                title={t('taskDetail.runAll')}
+                title={canEditTask ? t('taskDetail.runAll') : reason}
                 onClick={handleRunAll}
               />
               <ActionIcon
+                disabled={!canEditTask}
                 icon={Plus}
                 size="small"
-                title={t('taskDetail.addSubtask')}
+                title={canEditTask ? t('taskDetail.addSubtask') : reason}
                 onClick={toggleCreating}
               />
             </Flexbox>
@@ -336,6 +347,7 @@ const TaskSubtasks = memo(() => {
             paddingBlock={4}
             paddingInline={8}
             style={{ width: 'fit-content' }}
+            title={canEditTask ? undefined : reason}
             variant="borderless"
             onClick={toggleCreating}
           >

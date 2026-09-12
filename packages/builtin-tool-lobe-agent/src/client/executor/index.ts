@@ -1,3 +1,4 @@
+import { UserInteractionExecutionRuntime } from '@lobechat/builtin-tool-user-interaction/executionRuntime';
 import type { BuiltinToolContext, BuiltinToolResult, ChatStreamPayload } from '@lobechat/types';
 import { BaseExecutor, RequestTrigger } from '@lobechat/types';
 
@@ -7,8 +8,8 @@ import { useNotebookStore } from '@/store/notebook';
 import { LobeAgentManifest } from '../../manifest';
 import type {
   AnalyzeVisualMediaParams,
+  AskUserQuestionArgs,
   CallSubAgentParams,
-  CallSubAgentsParams,
   ClearTodosParams,
   CreatePlanParams,
   CreateTodosParams,
@@ -138,11 +139,30 @@ const createAbortController = (signal?: AbortSignal) => {
 const isVisualSourceMessage = (message: unknown): message is VisualSourceMessage =>
   !!message && typeof message === 'object';
 
+const nestedSubAgentDisabledResult = (): BuiltinToolResult => ({
+  content: 'Nested sub-agent execution is not allowed.',
+  error: {
+    message: 'Sub-agent calls cannot be triggered from within another sub-agent.',
+    type: 'NestedSubAgentNotAllowed',
+  },
+  success: false,
+});
+
 class LobeAgentExecutor extends BaseExecutor<typeof LobeAgentApiName> {
   readonly identifier = LobeAgentManifest.identifier;
   protected readonly apiEnum = LobeAgentApiName;
 
   private planRuntime = new PlanExecutionRuntime(clientPlanService);
+
+  // Reused from the standalone user-interaction tool — askUserQuestion is
+  // human-intervention 'always', so in normal flows the user's UI submit
+  // becomes the tool result and this runtime is only the fallback executor.
+  private interactionRuntime = new UserInteractionExecutionRuntime();
+
+  // ==================== Ask User Question ====================
+
+  askUserQuestion = (params: AskUserQuestionArgs): Promise<BuiltinToolResult> =>
+    this.interactionRuntime.askUserQuestion(params);
 
   // ==================== Plan / Todo ====================
 
@@ -359,52 +379,68 @@ class LobeAgentExecutor extends BaseExecutor<typeof LobeAgentApiName> {
 
   // ==================== Sub-Agent ====================
   //
-  // The executor only constructs the state payload that bridges the tool call
-  // to the agent-runtime instruction layer. The actual sub-agent dispatch is
-  // handled by `createAgentExecutors.ts` which reads `state.type` to emit the
-  // matching `exec_sub_agent` / `exec_client_sub_agent(s)` instruction.
+  // A sub-agent call is a normal tool call: the executor runs the sub-agent in
+  // an isolated Thread via `ctx.subAgent` (the current runtime, injected by the
+  // client) and returns the sub-agent's final output as the tool result. The
+  // Thread id is persisted in state so the Render can open it in the portal.
 
   callSubAgent = async (
     params: CallSubAgentParams,
     ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
-    const { description, instruction, inheritMessages, timeout, runInClient } = params;
+    if (ctx.isSubAgent) {
+      return nestedSubAgentDisabledResult();
+    }
+
+    const { description, instruction, inheritMessages, timeout } = params;
 
     if (!description || !instruction) {
       return { content: 'Sub-agent description and instruction are required.', success: false };
     }
 
-    const task = { description, inheritMessages, instruction, runInClient, timeout };
-    const stateType = runInClient ? 'execClientSubAgent' : 'execSubAgent';
-
-    return {
-      content: `🚀 Dispatched sub-agent for ${runInClient ? 'client-side' : ''} execution:\n- ${description}`,
-      state: { parentMessageId: ctx.messageId ?? '', task, type: stateType },
-      stop: true,
-      success: true,
-    };
-  };
-
-  callSubAgents = async (
-    params: CallSubAgentsParams,
-    ctx: BuiltinToolContext,
-  ): Promise<BuiltinToolResult> => {
-    const { tasks } = params;
-
-    if (!tasks || tasks.length === 0) {
-      return { content: 'No sub-agents provided to dispatch.', success: false };
+    if (!ctx.subAgent) {
+      return { content: 'Sub-agent execution is not available in this runtime.', success: false };
     }
 
-    const taskCount = tasks.length;
-    const taskList = tasks.map((t, i) => `${i + 1}. ${t.description}`).join('\n');
-    const hasClientTasks = tasks.some((t) => t.runInClient);
-    const stateType = hasClientTasks ? 'execClientSubAgents' : 'execSubAgents';
-    const executionMode = hasClientTasks ? 'client-side' : '';
+    const {
+      result,
+      threadId,
+      success,
+      error,
+      model,
+      totalCost,
+      totalInputTokens,
+      totalOutputTokens,
+      totalToolCalls,
+      totalTokens,
+    } = await ctx.subAgent.run({
+      description,
+      inheritMessages,
+      instruction,
+      timeout,
+      toolMessageId: ctx.messageId,
+    });
 
+    if (!success) {
+      return { content: error ?? 'Sub-agent execution failed.', success: false };
+    }
+
+    // Cost + the token split are persisted alongside the totals because this row is
+    // where the parent's usage tray reads a sub-agent's spend — the child's own
+    // messages sit in an isolation thread the parent never loads, so anything left
+    // off here is invisible to the parent's ledger. Mirrors the shape the server
+    // path's completion bridge backfills.
     return {
-      content: `🚀 Dispatched ${taskCount} sub-agent${taskCount > 1 ? 's' : ''} for ${executionMode} execution:\n${taskList}`,
-      state: { parentMessageId: ctx.messageId ?? '', tasks, type: stateType },
-      stop: true,
+      content: result,
+      state: {
+        model,
+        threadId,
+        totalCost,
+        totalInputTokens,
+        totalOutputTokens,
+        totalToolCalls,
+        totalTokens,
+      },
       success: true,
     };
   };

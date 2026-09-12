@@ -1,9 +1,10 @@
-import { type NavigateFunction } from 'react-router-dom';
+import { type NavigateFunction } from 'react-router';
 
 import { type MigrationSQL, type MigrationTableItem } from '@/types/clientDB';
 import { DatabaseLoadingState } from '@/types/clientDB';
 import { type LocaleMode } from '@/types/locale';
 import { SessionDefaultGroup } from '@/types/session';
+import { type TopicGroupMode } from '@/types/topic';
 import { AsyncLocalStorage } from '@/utils/localStorage';
 
 export enum SidebarTabKey {
@@ -22,11 +23,12 @@ export enum SidebarTabKey {
 }
 
 export enum ChatSettingsTabs {
+  Connector = 'connector',
+  Graph = 'graph',
   Opening = 'opening',
   Plugin = 'plugin',
   Prompt = 'prompt',
   SelfIteration = 'selfIteration',
-  TTS = 'tts',
 }
 
 export enum GroupSettingsTabs {
@@ -35,7 +37,16 @@ export enum GroupSettingsTabs {
   Settings = 'settings',
 }
 
-export type WorkingSidebarTab = 'files' | 'params' | 'resources' | 'review';
+// business builds may register extra sidebar tabs, so any string key is accepted
+export type WorkingSidebarTab =
+  'browser' | 'files' | 'params' | 'resources' | 'review' | (string & {});
+
+export const DEFAULT_RESOURCE_MANAGER_COLUMN_WIDTHS = {
+  date: 160,
+  name: 574,
+  size: 140,
+  uploader: 180,
+};
 
 export enum SettingsTabs {
   About = 'about',
@@ -49,8 +60,10 @@ export enum SettingsTabs {
   ChatAppearance = 'chat-appearance',
   /** @deprecated Use Appearance instead */
   Common = 'common',
+  Connector = 'connector',
   Credits = 'credits',
-  Creds = 'creds',
+  Creds = 'credential',
+  Devices = 'devices',
   Hotkey = 'hotkey',
   /** @deprecated Use ServiceModel instead */
   Image = 'image',
@@ -58,6 +71,7 @@ export enum SettingsTabs {
   Memory = 'memory',
   Messenger = 'messenger',
   Notification = 'notification',
+  OAuthApps = 'oauth-apps',
   // business
   Plans = 'plans',
   Profile = 'profile',
@@ -89,6 +103,7 @@ export enum ProfileTabs {
 }
 
 export const MODEL_DETAIL_PANEL_EXPANDED_KEYS = [
+  'rating',
   'context',
   'abilities',
   'pricing',
@@ -98,11 +113,13 @@ export const MODEL_DETAIL_PANEL_EXPANDED_KEYS = [
 export type ModelDetailPanelExpandedKey = (typeof MODEL_DETAIL_PANEL_EXPANDED_KEYS)[number];
 
 export const DEFAULT_MODEL_DETAIL_PANEL_EXPANDED_KEYS = [
+  'rating',
+  'abilities',
   'pricing',
   'config',
 ] as const satisfies readonly ModelDetailPanelExpandedKey[];
 
-export const DEFAULT_HOME_SIDEBAR_EXPANDED_KEYS = ['recents', 'agent'];
+export const DEFAULT_HOME_SIDEBAR_EXPANDED_KEYS = ['recents', 'agent', 'private'];
 
 export interface SystemStatus {
   /**
@@ -114,6 +131,14 @@ export interface SystemStatus {
    */
   agentPageSize?: number;
   chatInputHeight?: number;
+  /**
+   * Which topicGroups are collapsed, bucketed by group mode. We persist the
+   * collapsed keys rather than the expanded ones so a group that shows up later
+   * (a new project directory, a new month bucket) starts expanded; and bucketing
+   * per mode keeps `project:*` keys from leaking into byTime, where nothing would
+   * match and every group would render collapsed.
+   */
+  collapsedTopicGroupKeysByMode?: Partial<Record<TopicGroupMode, string[]>>;
   disabledModelProvidersSortType?: string;
   disabledModelsSortType?: string;
   /**
@@ -121,11 +146,17 @@ export interface SystemStatus {
    * so dismissing the current one does not hide future ones.
    */
   dismissedBannerIds?: string[];
+  /**
+   * Per-agent expanded state of the agent sidebar's top-level sections
+   * (Tasks / Topic), keyed by agentId. Lets each agent remember its own
+   * collapse/expand state so switching agents doesn't share one accordion.
+   * Nested booleans (not a key array) so the lodash `merge` in
+   * `updateSystemStatus` replaces scalars cleanly instead of index-merging arrays.
+   */
+  expandAgentSidebarSectionsByAgent?: Record<string, Record<string, boolean>>;
   expandInputActionbar?: boolean;
   // which sessionGroup should expand
   expandSessionGroupKeys: string[];
-  // which topicGroup should expand
-  expandTopicGroupKeys?: string[];
   fileManagerViewMode?: 'list' | 'masonry';
   filePanelWidth: number;
   /**
@@ -189,6 +220,10 @@ export interface SystemStatus {
    */
   pagePageSize?: number;
   portalWidth: number;
+  /**
+   * number of private agents (ungrouped) to display in the Private sidebar bucket
+   */
+  privateAgentPageSize?: number;
   readNotificationSlugs?: string[];
   /**
    * number of recent items to display
@@ -201,6 +236,7 @@ export interface SystemStatus {
     date: number;
     name: number;
     size: number;
+    uploader: number;
   };
   /**
    * Visibility of the Agent profile right-side Agent Builder panel.
@@ -209,6 +245,12 @@ export interface SystemStatus {
   showAgentBuilderPanel?: boolean;
   showCommandMenu?: boolean;
   showFilePanel?: boolean;
+  /**
+   * Collapse state of the nav panel while the Fleet (Observation Mode) view is active.
+   * Persisted independently from `showLeftPanel` so collapsing the running-task list
+   * does not carry over to / from the standard chat nav rail (and vice versa).
+   */
+  showFleetPanel?: boolean;
   showHotkeyHelper?: boolean;
   showImagePanel?: boolean;
   showImageTopicPanel?: boolean;
@@ -225,6 +267,15 @@ export interface SystemStatus {
    * Independent from `showRightPanel` so toggling it does not affect other pages.
    */
   showTaskAgentPanel?: boolean;
+  /**
+   * Visibility of the chat bottom terminal panel (desktop-only, Labs gated).
+   */
+  showTerminalPanel?: boolean;
+  /**
+   * Visibility of the Verify workspace left-side report-list panel.
+   * Independent from the nav rail so collapsing the report list does not affect other pages.
+   */
+  showVerifyReportPanel?: boolean;
   showVideoPanel?: boolean;
   showVideoTopicPanel?: boolean;
   /**
@@ -261,6 +312,10 @@ export interface SystemStatus {
     subGroupBy: 'assignee' | 'none' | 'priority' | 'status';
   };
   /**
+   * Height of the chat bottom terminal panel. Persisted so resizing survives remounts.
+   */
+  terminalPanelHeight?: number;
+  /**
    * Whether to display tokens in short format
    */
   tokenDisplayFormatShort?: boolean;
@@ -268,9 +323,24 @@ export interface SystemStatus {
    * number of topics to display per page
    */
   topicPageSize?: number;
+  /**
+   * Width of the Verify workspace left-side report-list panel.
+   */
+  verifyReportPanelWidth: number;
   videoPanelWidth: number;
   videoTopicPanelWidth?: number;
   videoTopicViewMode?: 'grid' | 'list';
+  /**
+   * One-shot navigation request for the WorkingSidebar browser tab, so external
+   * triggers (e.g. web-browsing search results) can open a URL in the in-app
+   * browser. The pane clears it (to `null`) the moment it navigates: this status
+   * is persisted, and the pane remounts whenever the browser session key changes
+   * (i.e. on every topic switch), so a request left lying around would be
+   * re-consumed and would drag that topic's page off whatever the agent had
+   * loaded. `null` rather than `undefined` because `updateSystemStatus` merges
+   * with lodash, which skips undefined.
+   */
+  workingSidebarBrowserRequest?: { nonce: number; url: string } | null;
   workingSidebarRevealRequest?: { nonce: number; path: string };
   /**
    * Active tab inside the agent chat right-side WorkingSidebar.
@@ -278,8 +348,39 @@ export interface SystemStatus {
    * can switch the panel to "review" when revealing the right panel.
    */
   workingSidebarTab?: WorkingSidebarTab;
-  zenMode?: boolean;
+  /**
+   * Width of the agent chat right-side WorkingSidebar (space / params / files / …).
+   * Persisted so resizing survives remounts when navigating away and back.
+   */
+  workingSidebarWidth?: number;
+  /**
+   * Workspace-mode overlay for sidebar layout/visibility preferences.
+   * When the user is inside a workspace (see `useActiveWorkspaceId`), reads
+   * fall back to these values instead of the top-level fields, and writes
+   * to whitelisted fields land here. Top-level fields stay as the personal
+   * (no-workspace) preference, so switching modes does not bleed state.
+   * Single shared bucket across all workspaces — not keyed by workspaceId.
+   */
+  workspace?: Partial<Pick<SystemStatus, WorkspaceOverridableField>>;
 }
+
+/**
+ * Fields whose preference is meaningfully different between personal mode
+ * and workspace mode (e.g. workspace-only sidebar entries like the Private
+ * group, or product-driven defaults like hiding Recents in a workspace).
+ * Writes to these fields are routed to `status.workspace.*` when the user is
+ * inside a workspace; reads fall back to the top-level value when the
+ * overlay is empty.
+ */
+export type WorkspaceOverridableField =
+  'expandSessionGroupKeys' | 'hiddenSidebarSections' | 'sidebarExpandedKeys' | 'sidebarItems';
+
+export const WORKSPACE_OVERRIDABLE_FIELDS = [
+  'expandSessionGroupKeys',
+  'hiddenSidebarSections',
+  'sidebarExpandedKeys',
+  'sidebarItems',
+] as const satisfies readonly WorkspaceOverridableField[];
 
 export interface GlobalNavigationRef {
   current: NavigateFunction | null;
@@ -324,6 +425,7 @@ export interface GlobalState {
 export const INITIAL_STATUS = {
   agentBuilderPanelWidth: 360,
   agentPageSize: 5,
+  privateAgentPageSize: 5,
   chatInputHeight: 64,
   recentPageSize: 5,
   taskListViewOptions: {
@@ -351,7 +453,7 @@ export const INITIAL_STATUS = {
   imageTopicViewMode: 'grid' as const,
   imageTopicPanelWidth: 80,
   knowledgeBaseModalViewMode: 'list' as const,
-  leftPanelWidth: 320,
+  leftPanelWidth: 280,
   mobileShowTopic: false,
   modelDetailPanelExpandedKeys: [...DEFAULT_MODEL_DETAIL_PANEL_EXPANDED_KEYS],
   modelSwitchPanelGroupMode: 'byProvider',
@@ -361,13 +463,10 @@ export const INITIAL_STATUS = {
   pagePageSize: 20,
   portalWidth: 400,
   readNotificationSlugs: [],
-  resourceManagerColumnWidths: {
-    date: 160,
-    name: 574,
-    size: 140,
-  },
+  resourceManagerColumnWidths: DEFAULT_RESOURCE_MANAGER_COLUMN_WIDTHS,
   showCommandMenu: false,
   showFilePanel: true,
+  showFleetPanel: true,
   showHotkeyHelper: false,
   showImagePanel: true,
   showImageTopicPanel: true,
@@ -377,16 +476,20 @@ export const INITIAL_STATUS = {
   showRightPanel: false,
   showSystemRole: false,
   showTaskAgentPanel: false,
+  showTerminalPanel: false,
+  showVerifyReportPanel: true,
   showVideoPanel: true,
   showVideoTopicPanel: true,
   sidebarExpandedKeys: [...DEFAULT_HOME_SIDEBAR_EXPANDED_KEYS],
   systemRoleExpandedMap: {},
+  terminalPanelHeight: 320,
   tokenDisplayFormatShort: true,
   topicPageSize: 20,
+  verifyReportPanelWidth: 300,
   videoPanelWidth: 320,
   videoTopicViewMode: 'grid' as const,
   videoTopicPanelWidth: 80,
-  zenMode: false,
+  workingSidebarWidth: 360,
 } satisfies SystemStatus;
 
 export const initialState: GlobalState = {

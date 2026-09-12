@@ -10,10 +10,13 @@ import About from '../about';
 import Advanced from '../advanced';
 import APIKey from '../apikey';
 import Appearance from '../appearance';
+import Connector from '../connector';
 import Creds from '../creds';
+import Devices from '../devices';
 import Hotkey from '../hotkey';
 import Memory from '../memory';
 import Messenger from '../messenger';
+import OAuthApps from '../oauth-apps';
 import Profile from '../profile';
 import Provider from '../provider';
 import Proxy from '../proxy';
@@ -37,14 +40,17 @@ export const componentMap = {
   [SettingsTabs.Proxy]: Proxy,
   [SettingsTabs.SystemTools]: SystemTools,
   [SettingsTabs.Storage]: Storage,
+  [SettingsTabs.Devices]: Devices,
   // Profile related tabs
   [SettingsTabs.Profile]: Profile,
   [SettingsTabs.Stats]: Stats,
   [SettingsTabs.Usage]: Usage,
   [SettingsTabs.APIKey]: APIKey,
+  [SettingsTabs.OAuthApps]: OAuthApps,
   [SettingsTabs.Creds]: Creds,
   [SettingsTabs.Security]: Security,
   [SettingsTabs.Skill]: Skill,
+  [SettingsTabs.Connector]: Connector,
 
   [SettingsTabs.Plans]: Plans,
   [SettingsTabs.Credits]: Credits,

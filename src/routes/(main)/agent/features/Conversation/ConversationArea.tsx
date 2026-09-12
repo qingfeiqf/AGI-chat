@@ -1,25 +1,30 @@
 'use client';
 
 import { Flexbox } from '@lobehub/ui';
-import { cssVar } from 'antd-style';
+import { createStaticStyles, cssVar } from 'antd-style';
 import debug from 'debug';
 import { memo, Suspense, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useBusinessConversationAnalytics } from '@/business/client/hooks/useBusinessConversationAnalytics';
 import AgentHome from '@/features/AgentHome';
 import ChatMiniMap from '@/features/ChatMiniMap';
 import { ChatList, ConversationProvider } from '@/features/Conversation';
 import { useChatFollowUp } from '@/features/Conversation/hooks/useChatFollowUp';
+import {
+  ForwardMessageDispatcher,
+  MessageForwardFooter,
+} from '@/features/Conversation/MessageForward';
 import { mergeConversationHooks } from '@/features/Conversation/utils/mergeConversationHooks';
-import ZenModeToast from '@/features/ZenModeToast';
 import { useGatewayReconnect } from '@/hooks/useGatewayReconnect';
 import { useOperationState } from '@/hooks/useOperationState';
 import { useAgentStore } from '@/store/agent';
-import { agentChatConfigSelectors, agentSelectors } from '@/store/agent/selectors';
+import { agentByIdSelectors, chatConfigByIdSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { threadSelectors, topicSelectors } from '@/store/chat/selectors';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 
+import ExposeMainEditor from './ExposeMainEditor';
 import HeterogeneousChatInput from './HeterogeneousChatInput';
 import MainChatInput from './MainChatInput';
 import MessageFromUrl from './MainChatInput/MessageFromUrl';
@@ -28,6 +33,21 @@ import { useActionsBarConfig } from './useActionsBarConfig';
 import { useAgentContext } from './useAgentContext';
 
 const log = debug('lobe-render:agent:ConversationArea');
+
+const styles = createStaticStyles(({ css }) => ({
+  // When the chat column is wide enough for the header to float above the
+  // full-bleed list (see Conversation/Header), this in-list spacer keeps the
+  // first message clear of it while still letting content scroll underneath.
+  // A list row is used instead of scroller padding, which breaks virtua's
+  // offset math. Height matches the 44px NavHeader.
+  floatingHeaderSpacer: css`
+    height: 0;
+
+    @container agent-chat-layout (min-width: 1200px) {
+      height: 44px;
+    }
+  `,
+}));
 
 /**
  * ConversationArea
@@ -59,7 +79,9 @@ const Conversation = memo(() => {
   // Heterogeneous agents (Claude Code, etc.) use a simplified input — their
   // toolchain/memory/model are managed by the external runtime, so LobeHub's
   // model/tools/memory/KB/MCP/runtime-mode pickers don't apply.
-  const isHeterogeneousAgent = useAgentStore(agentSelectors.isCurrentAgentHeterogeneous);
+  const isHeterogeneousAgent = useAgentStore(
+    agentByIdSelectors.isAgentHeterogeneousById(context.agentId),
+  );
 
   // Subagent threads (spawned by an external agent's subagent tool call) are
   // read-only — the parent agent drives their execution, so hide the input.
@@ -73,15 +95,19 @@ const Conversation = memo(() => {
   );
   useGatewayReconnect(context.topicId, runningOperation);
 
-  const agentChatConfig = useAgentStore(agentChatConfigSelectors.currentChatConfig);
+  const agentChatConfig = useAgentStore(chatConfigByIdSelectors.getChatConfigById(context.agentId));
   const chatFollowUpHooks = useChatFollowUp({
     agentChatConfig,
     conversationKey: chatKey,
     threadId: context.threadId ?? undefined,
     topicId: context.topicId ?? undefined,
   });
+  const businessAnalyticsHooks = useBusinessConversationAnalytics(context);
 
-  const hooks = useMemo(() => mergeConversationHooks(chatFollowUpHooks), [chatFollowUpHooks]);
+  const hooks = useMemo(
+    () => mergeConversationHooks(businessAnalyticsHooks, chatFollowUpHooks),
+    [businessAnalyticsHooks, chatFollowUpHooks],
+  );
 
   return (
     <ConversationProvider
@@ -95,7 +121,6 @@ const Conversation = memo(() => {
         replaceMessages(messages, { context: ctx });
       }}
     >
-      <ZenModeToast />
       <Flexbox
         flex={1}
         width={'100%'}
@@ -107,6 +132,7 @@ const Conversation = memo(() => {
       >
         <ChatList
           defaultWorkflowExpandLevel={isHeterogeneousAgent ? { streaming: 'full' } : undefined}
+          headerSlot={<div aria-hidden className={styles.floatingHeaderSpacer} />}
           welcome={<AgentHome />}
           footerSlot={
             isSubagentThread ? (
@@ -131,9 +157,15 @@ const Conversation = memo(() => {
           }
         />
       </Flexbox>
-      {!isSubagentThread && (isHeterogeneousAgent ? <HeterogeneousChatInput /> : <MainChatInput />)}
+      {!isSubagentThread && (
+        <MessageForwardFooter>
+          {isHeterogeneousAgent ? <HeterogeneousChatInput /> : <MainChatInput />}
+        </MessageForwardFooter>
+      )}
+      <ExposeMainEditor />
       <ThreadHydration />
       <ChatMiniMap />
+      <ForwardMessageDispatcher />
       <Suspense>
         <MessageFromUrl />
       </Suspense>

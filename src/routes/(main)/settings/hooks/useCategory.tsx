@@ -2,7 +2,9 @@ import { isDesktop } from '@lobechat/const';
 import { Avatar } from '@lobehub/ui';
 import { SkillsIcon } from '@lobehub/ui/icons';
 import {
+  AppWindowIcon,
   BellIcon,
+  Blocks,
   Brain,
   BrainCircuit,
   ChartColumnBigIcon,
@@ -18,6 +20,7 @@ import {
   KeyRound,
   Map,
   MessageCircleIcon,
+  MonitorSmartphoneIcon,
   PaletteIcon,
   Sparkles,
   TerminalSquare,
@@ -34,6 +37,7 @@ import {
   useServerConfigStore,
 } from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
+import { labPreferSelectors } from '@/store/user/selectors';
 import { userProfileSelectors } from '@/store/user/slices/auth/selectors';
 import { userGeneralSettingsSelectors } from '@/store/user/slices/settings/selectors';
 
@@ -45,6 +49,8 @@ export enum SettingsGroupKey {
 }
 
 export interface CategoryItem {
+  /** Override the navigation URL. When omitted, Body derives the URL from `key`. */
+  href?: string;
   icon: any;
   key: SettingsTabs;
   label: string;
@@ -68,6 +74,7 @@ export const useCategory = () => {
   ]);
   const remoteServerUrl = useElectronStore(electronSyncSelectors.remoteServerUrl);
   const isDevMode = useUserStore((s) => userGeneralSettingsSelectors.config(s).isDevMode);
+  const enableOAuthApps = useUserStore(labPreferSelectors.enableOAuthApps);
 
   const avatarUrl = useMemo(() => {
     if (!avatar) return undefined;
@@ -97,6 +104,11 @@ export const useCategory = () => {
         key: SettingsTabs.Appearance,
         label: t('tab.appearance'),
       },
+      {
+        icon: MonitorSmartphoneIcon,
+        key: SettingsTabs.Devices,
+        label: t('tab.devices'),
+      },
       !mobile && {
         icon: KeyboardIcon,
         key: SettingsTabs.Hotkey,
@@ -115,7 +127,9 @@ export const useCategory = () => {
       title: t('group.common'),
     });
 
-    // Subscription group
+    // Personal subscription / billing items. Always shown when business
+    // features are enabled — workspace settings live under a separate
+    // `/:workspaceSlug/settings/*` surface and never share this sidebar.
     if (enableBusinessFeatures) {
       const subscriptionItems: CategoryItem[] = [
         { icon: Map, key: SettingsTabs.Plans, label: tSubscription('tab.plans') },
@@ -150,6 +164,11 @@ export const useCategory = () => {
         icon: SkillsIcon,
         key: SettingsTabs.Skill,
         label: t('tab.skill'),
+      },
+      {
+        icon: Blocks,
+        key: SettingsTabs.Connector,
+        label: t('tab.connector'),
       },
       {
         icon: BrainCircuit,
@@ -201,6 +220,11 @@ export const useCategory = () => {
         key: SettingsTabs.APIKey,
         label: tAuth('tab.apikey'),
       },
+      enableOAuthApps && {
+        icon: AppWindowIcon,
+        key: SettingsTabs.OAuthApps,
+        label: tAuth('tab.oauthApps'),
+      },
       {
         icon: EllipsisIcon,
         key: SettingsTabs.Advanced,
@@ -230,6 +254,7 @@ export const useCategory = () => {
     showApiKeyManage,
     showProvider,
     isDevMode,
+    enableOAuthApps,
     avatarUrl,
     username,
   ]);

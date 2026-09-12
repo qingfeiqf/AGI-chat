@@ -3,6 +3,7 @@ import { Lobe302AI } from './providers/ai302';
 import { LobeAi360AI } from './providers/ai360';
 import { LobeAiHubMixAI } from './providers/aihubmix';
 import { LobeAkashChatAI } from './providers/akashchat';
+import { LobeAntGroupAI } from './providers/antgroup';
 import { LobeAnthropicAI } from './providers/anthropic';
 import { LobeAzureAI } from './providers/azureai';
 import { LobeAzureOpenAI } from './providers/azureOpenai';
@@ -62,6 +63,7 @@ import { LobeSparkAI } from './providers/spark';
 import { LobeStepfunAI } from './providers/stepfun';
 import { LobeStraicoAI } from './providers/straico';
 import { LobeStreamLakeAI } from './providers/streamlake';
+import { LobeSuperGrokAI } from './providers/superGrok';
 import { LobeTaichuAI } from './providers/taichu';
 import { LobeTencentCloudAI } from './providers/tencentcloud';
 import { LobeTogetherAI } from './providers/togetherai';
@@ -85,6 +87,7 @@ export const providerRuntimeMap = {
   ai360: LobeAi360AI,
   aihubmix: LobeAiHubMixAI,
   akashchat: LobeAkashChatAI,
+  antgroup: LobeAntGroupAI,
   anthropic: LobeAnthropicAI,
   bailiancodingplan: LobeBailianCodingPlanAI,
   azure: LobeAzureOpenAI,
@@ -145,6 +148,7 @@ export const providerRuntimeMap = {
   stepfun: LobeStepfunAI,
   straico: LobeStraicoAI,
   streamlake: LobeStreamLakeAI,
+  supergrok: LobeSuperGrokAI,
   taichu: LobeTaichuAI,
   tencentcloud: LobeTencentCloudAI,
   togetherai: LobeTogetherAI,

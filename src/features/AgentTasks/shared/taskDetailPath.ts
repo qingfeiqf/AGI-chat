@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 
+import { useWorkspaceAwareNavigate } from '@/features/Workspace/useWorkspaceAwareNavigate';
 import { useOptionalAgentModal } from '@/routes/(main)/home/_layout/Body/Agent/ModalProvider';
 import { useTaskStore } from '@/store/task';
 
@@ -17,7 +18,7 @@ export const useTaskDetailPath = () => {
 };
 
 export const useNavigateToTaskDetail = () => {
-  const navigate = useNavigate();
+  const navigate = useWorkspaceAwareNavigate();
   const getTaskDetailPath = useTaskDetailPath();
   const agentModal = useOptionalAgentModal();
   const setActiveTaskId = useTaskStore((s) => s.setActiveTaskId);

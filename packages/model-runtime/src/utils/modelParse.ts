@@ -56,6 +56,11 @@ export const MODEL_LIST_CONFIGS = {
     reasoningKeywords: ['ring-'],
     visionKeywords: ['ming-'],
   },
+  internlm: {
+    functionCallKeywords: ['internlm', 'intern-s'],
+    reasoningKeywords: ['intern-s'],
+    visionKeywords: ['internvl', 'intern-s'],
+  },
   llama: {
     functionCallKeywords: ['llama-3.2', 'llama-3.3', 'llama-4'],
     reasoningKeywords: [],
@@ -64,12 +69,12 @@ export const MODEL_LIST_CONFIGS = {
   longcat: {
     functionCallKeywords: ['longcat'],
     reasoningKeywords: ['thinking'],
-    visionKeywords: [],
+    visionKeywords: ['omni'],
   },
   minimax: {
     functionCallKeywords: ['minimax'],
     reasoningKeywords: ['-m'],
-    visionKeywords: ['-vl', 'Text-01'],
+    visionKeywords: ['-vl', 'Text-01', '-m3'],
   },
   mistral: {
     functionCallKeywords: ['mistral', 'ministral', 'pixtral'],
@@ -78,8 +83,16 @@ export const MODEL_LIST_CONFIGS = {
   },
   moonshot: {
     functionCallKeywords: ['moonshot', 'kimi'],
-    reasoningKeywords: ['thinking', 'k2.5'],
-    visionKeywords: ['vision', 'kimi-latest', 'kimi-thinking-preview', 'k2.5'],
+    reasoningKeywords: ['thinking', 'k2.5', 'k2.6', 'k2.7', 'kimi-k3'],
+    visionKeywords: [
+      'vision',
+      'kimi-latest',
+      'kimi-thinking-preview',
+      'k2.5',
+      'k2.6',
+      'k2.7',
+      'kimi-k3',
+    ],
   },
   openai: {
     excludeKeywords: ['audio'],
@@ -99,7 +112,7 @@ export const MODEL_LIST_CONFIGS = {
       'qwen3',
     ],
     reasoningKeywords: ['qvq', 'qwq', 'qwen3', '!-instruct-', '!-coder-'],
-    visionKeywords: ['qvq', '-vl', '-omni'],
+    visionKeywords: ['qvq', '-vl', '-omni', 'qwen3.'],
   },
   replicate: {
     imageOutputKeywords: [
@@ -159,6 +172,7 @@ export const MODEL_OWNER_DETECTION_CONFIG = {
   deepseek: ['deepseek'],
   google: ['gemini', 'imagen', 'gemma'],
   inclusionai: ['ling-', 'ming-', 'ring-'],
+  internlm: ['internvl', 'internlm', 'intern-'],
   llama: ['llama', 'llava'],
   longcat: ['longcat'],
   minimax: ['minimax'],
@@ -175,6 +189,13 @@ export const MODEL_OWNER_DETECTION_CONFIG = {
   zeroone: ['yi-'],
   zhipu: ['glm'],
 } as const;
+
+export const isDeepSeekV4FamilyModel = (model: string | undefined): boolean =>
+  typeof model === 'string' && model.toLowerCase().includes('deepseek-v4');
+
+export const isDeepSeekThinkingEligibleModel = (model: string | undefined): boolean =>
+  typeof model === 'string' &&
+  (model.toLowerCase().includes('deepseek-reasoner') || isDeepSeekV4FamilyModel(model));
 
 // Image model keyword configuration
 export const IMAGE_MODEL_KEYWORDS = [
@@ -267,9 +288,11 @@ const isKeywordListMatch = (modelId: string, keywords: readonly string[]): boole
  * @param provider Provider type
  * @returns Matching local model configuration
  */
+// Accepts either a provider id or a model-family key — at runtime it simply
+// looks up a same-named export in model-bank and skips when absent.
 const findKnownModelByProvider = async (
   modelId: string,
-  provider: keyof typeof MODEL_LIST_CONFIGS,
+  provider: ModelProviderKey | keyof typeof MODEL_LIST_CONFIGS,
 ): Promise<any> => {
   const lowerModelId = modelId.toLowerCase();
 
@@ -654,16 +677,20 @@ const processModelCard = (
 export const processModelList = async (
   modelList: Array<{ id: string }>,
   config: ModelProcessorConfig,
-  provider?: keyof typeof MODEL_LIST_CONFIGS,
+  provider?: ModelProviderKey,
 ): Promise<ChatModelCard[]> => {
   const { loadModels } = await import('model-bank');
   const builtinModels = await loadModels();
 
   // If provider is provided, try to get the local configuration for that provider
-  const providerLocalConfig = await getProviderLocalConfig(provider as ModelProviderKey);
+  const providerLocalConfig = await getProviderLocalConfig(provider);
 
   return Promise.all(
     modelList.map(async (model) => {
+      if (!model?.id) {
+        return undefined;
+      }
+
       let knownModel: any = null;
 
       // If provider is provided, prioritize using provider-specific configuration

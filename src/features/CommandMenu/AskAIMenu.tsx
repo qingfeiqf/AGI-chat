@@ -1,12 +1,13 @@
 import { DEFAULT_AVATAR, DEFAULT_INBOX_AVATAR } from '@lobechat/const';
-import { Avatar } from '@lobehub/ui';
+import { Avatar } from '@lobehub/ui/base-ui';
 import { GroupBotSquareIcon } from '@lobehub/ui/icons';
 import { Command } from 'cmdk';
 import { Bot, Image } from 'lucide-react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 
+import { useWorkspaceAwareNavigate } from '@/features/Workspace/useWorkspaceAwareNavigate';
 import { useHomeStore } from '@/store/home';
 import { homeAgentListSelectors } from '@/store/home/selectors';
 
@@ -17,12 +18,12 @@ import { useCommandMenu } from './useCommandMenu';
 
 const AskAIMenu = memo(() => {
   const { t } = useTranslation(['common', 'chat', 'home']);
-  const navigate = useNavigate();
+  const navigate = useWorkspaceAwareNavigate();
   const { handleAskLobeAI, handleAIPainting, closeCommandMenu } = useCommandMenu();
   const { search } = useCommandMenuContext();
 
   // Get agent list (limit to first 20 items for simplicity)
-  const allAgents = useHomeStore(homeAgentListSelectors.allAgents);
+  const allAgents = useHomeStore(useShallow(homeAgentListSelectors.allAgents));
   const agents = allAgents.filter((item) => item.type === 'agent').slice(0, 20);
 
   const heading = search.trim()

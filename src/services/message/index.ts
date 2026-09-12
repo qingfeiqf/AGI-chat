@@ -31,15 +31,130 @@ export interface MessageQueryContext {
   topicShareId?: string;
 }
 
+interface MessageReadQueryContext {
+  agentId?: string | null;
+  groupId?: string | null;
+  /**
+   * Skip the Work-summary assembly on the server — set by mid-stream
+   * refetches (tool_end / step_complete) so each tool round doesn't re-run
+   * the per-type Work queries. See `QueryMessageParams.skipWorks`.
+   */
+  skipWorks?: boolean;
+  threadId?: string | null;
+  topicId?: string | null;
+  topicShareId?: string;
+}
+
+export type MessageBatchOperation =
+  | {
+      message: CreateMessageParams;
+      type: 'createMessage';
+    }
+  | {
+      id: string;
+      type: 'updateMessage';
+      value: Partial<UpdateMessageParams>;
+    }
+  | {
+      id: string;
+      type: 'updateToolMessage';
+      value: {
+        content?: string;
+        metadata?: Record<string, any>;
+        pluginError?: any;
+        pluginState?: Record<string, any>;
+      };
+    };
+
+export interface MessageBatchMutationResult {
+  results?: Array<{
+    error?: string;
+    id?: string;
+    index: number;
+    success: boolean;
+    type: MessageBatchOperation['type'];
+  }>;
+  success?: boolean;
+}
+
+export class MessageBatchMutationError extends Error {
+  constructor(public readonly result: MessageBatchMutationResult) {
+    const failed = result.results?.filter((item) => !item.success) ?? [];
+    const reasons = [...new Set(failed.map((item) => item.error).filter(Boolean))];
+    super(
+      `Message batch mutation failed for ${failed.length || 'unknown'} operation(s)` +
+        (reasons.length > 0 ? `: ${reasons.join('; ')}` : ''),
+    );
+  }
+}
+
+const getBatchMutationAbortKey = (operations: MessageBatchOperation[]) => {
+  if (operations.length !== 1) return;
+
+  const [operation] = operations;
+  if (operation.type === 'updateToolMessage') return `tool-message-${operation.id}`;
+};
+
 export class MessageService {
+  batchMutate = async (operations: MessageBatchOperation[], signal?: AbortSignal) => {
+    const input = {
+      operations: operations.map((operation) => {
+        if (operation.type === 'createMessage') {
+          return {
+            message: operation.message,
+            type: operation.type,
+          };
+        }
+
+        return {
+          id: operation.id,
+          type: operation.type,
+          value: operation.value,
+        };
+      }),
+    } as any;
+
+    return signal
+      ? lambdaClient.message.batchMutate.mutate(input, { signal })
+      : lambdaClient.message.batchMutate.mutate(input);
+  };
+
+  batchMutateOrThrow = async (operations: MessageBatchOperation[]) => {
+    const execute = async (signal?: AbortSignal) => {
+      const result = (await (signal
+        ? this.batchMutate(operations, signal)
+        : this.batchMutate(operations))) as MessageBatchMutationResult;
+      const hasFailedOperation = result.results?.some((item) => !item.success) ?? false;
+      const hasCompleteResults = result.results?.length === operations.length;
+
+      if (result.success !== true || !hasCompleteResults || hasFailedOperation) {
+        throw new MessageBatchMutationError(result);
+      }
+
+      return result;
+    };
+
+    const abortKey = getBatchMutationAbortKey(operations);
+
+    return abortKey ? abortableRequest.execute(abortKey, execute) : execute();
+  };
+
   createMessage = async (params: CreateMessageParams): Promise<CreateMessageResult> => {
     return lambdaClient.message.createMessage.mutate(params as any);
   };
 
-  getMessages = async (params: MessageQueryContext): Promise<UIChatMessage[]> => {
+  getMessages = async (params: MessageReadQueryContext): Promise<UIChatMessage[]> => {
     const data = await lambdaClient.message.getMessages.query(params);
 
     return data as unknown as UIChatMessage[];
+  };
+
+  diagnoseTopic = async (params: { agentId?: string | null; topicId: string }) => {
+    return lambdaClient.message.diagnoseTopic.query(params);
+  };
+
+  repairTopic = async (params: { agentId?: string | null; topicId: string }) => {
+    return lambdaClient.message.repairTopic.mutate(params);
   };
 
   countMessages = async (params?: {
@@ -64,6 +179,10 @@ export class MessageService {
 
   getHeatmaps = async (): Promise<HeatmapsProps['data']> => {
     return lambdaClient.message.getHeatmaps.query();
+  };
+
+  getTokenHeatmaps = async (): Promise<HeatmapsProps['data']> => {
+    return lambdaClient.message.getTokenHeatmaps.query();
   };
 
   updateMessageError = async (id: string, value: ChatMessageError, ctx?: MessageQueryContext) => {
@@ -200,10 +319,6 @@ export class MessageService {
     return lambdaClient.message.removeMessagesByGroup.mutate({ groupId, topicId });
   };
 
-  removeAllMessages = async () => {
-    return lambdaClient.message.removeAllMessages.mutate();
-  };
-
   /**
    * Add files to a message
    * Used to associate exported files from code interpreter with the tool message
@@ -249,6 +364,7 @@ export class MessageService {
     content: string;
     groupId?: string | null;
     messageGroupId: string;
+    sourceGroupIds?: string[];
     threadId?: string | null;
     topicId: string;
   }): Promise<{ messages?: UIChatMessage[] }> => {

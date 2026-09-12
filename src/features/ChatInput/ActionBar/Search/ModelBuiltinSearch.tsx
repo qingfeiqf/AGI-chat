@@ -1,6 +1,6 @@
 import { Exa, Google } from '@lobehub/icons';
 import { Flexbox, Icon } from '@lobehub/ui';
-import { Switch } from 'antd';
+import { Switch } from '@lobehub/ui/base-ui';
 import { Search } from 'lucide-react';
 import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -32,7 +32,11 @@ const SearchEngineIcon = ({ icon }: SearchEngineIconProps) => {
   }
 };
 
-const ModelBuiltinSearch = memo(() => {
+interface ModelBuiltinSearchProps {
+  disabled?: boolean;
+}
+
+const ModelBuiltinSearch = memo<ModelBuiltinSearchProps>(({ disabled }) => {
   const { t } = useTranslation('chat');
   const agentId = useAgentId();
   const { updateAgentChatConfig } = useUpdateAgentConfig();
@@ -51,8 +55,13 @@ const ModelBuiltinSearch = memo(() => {
       align={'center'}
       justify={'space-between'}
       padding={'8px 12px'}
-      style={{ cursor: 'pointer', userSelect: 'none' }}
+      style={{
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : undefined,
+        userSelect: 'none',
+      }}
       onClick={async () => {
+        if (disabled) return;
         setLoading(true);
         await updateAgentChatConfig({ useModelBuiltinSearch: !checked });
         setLoading(false);
@@ -62,7 +71,7 @@ const ModelBuiltinSearch = memo(() => {
         <SearchEngineIcon icon={modelCard?.settings?.searchProvider} />
         {t('search.mode.useModelBuiltin')}
       </Flexbox>
-      <Switch checked={checked} loading={isLoading} size={'small'} />
+      <Switch checked={checked} disabled={disabled} loading={isLoading} size={'small'} />
     </Flexbox>
   );
 });

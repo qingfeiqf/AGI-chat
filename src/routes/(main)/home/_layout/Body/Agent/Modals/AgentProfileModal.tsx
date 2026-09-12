@@ -1,6 +1,6 @@
 'use client';
 
-import { Modal } from '@lobehub/ui';
+import { Modal } from '@lobehub/ui/base-ui';
 // Base UI popups (Select, DropdownMenu, Popover) read AppElementContext to pick a
 // portal container (via usePortalContainer -> useAppElement). Override it with the
 // modal wrap so popups render inside the modal's stacking context (above the antd
@@ -8,7 +8,7 @@ import { Modal } from '@lobehub/ui';
 // z-index and causes the model-switcher / +集成技能 popups to appear behind the modal.
 import AppElementContext from '@lobehub/ui/es/ThemeProvider/AppElementContext';
 import { ConfigProvider } from 'antd';
-import { createStyles } from 'antd-style';
+import { createStaticStyles } from 'antd-style';
 import { memo, useCallback, useEffect, useState } from 'react';
 
 import Loading from '@/components/Loading/BrandTextLoading';
@@ -21,7 +21,7 @@ import { agentSelectors } from '@/store/agent/selectors';
 
 import { AgentProfileModalContainerContext } from './AgentProfileModalContext';
 
-const useStyles = createStyles(({ css }) => ({
+const styles = createStaticStyles(({ css }) => ({
   modal: css`
     .ant-modal-content {
       overflow: hidden;
@@ -97,7 +97,6 @@ const AgentProfileModalContent = memo(({ agentId }: { agentId: string }) => {
 AgentProfileModalContent.displayName = 'AgentProfileModalContent';
 
 const AgentProfileModal = memo<AgentProfileModalProps>(({ agentId, open, onCancel }) => {
-  const { styles } = useStyles();
   const [modalWrapElement, setModalWrapElement] = useState<HTMLElement | null>(null);
 
   // Get agent details
@@ -133,7 +132,7 @@ const AgentProfileModal = memo<AgentProfileModalProps>(({ agentId, open, onCance
 
   return (
     <Modal
-      destroyOnClose
+      destroyOnHidden
       className={styles.modal}
       footer={null}
       open={open}
