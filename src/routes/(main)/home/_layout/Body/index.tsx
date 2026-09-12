@@ -202,16 +202,11 @@ const Body = memo(() => {
     };
 
     for (const key of visibleKeys) {
+      // Fork UX: the spacer anchors the bottom zone — items after it are rendered
+      // as icons in the sidebar Footer (bottomItemRoutes), not as labeled rows here.
       if (key === SIDEBAR_SPACER_ID) {
         flushAccordion();
-        elements.push(
-          <div
-            aria-hidden
-            data-sidebar-bottom-spacer
-            key={`spacer-${elements.length}`}
-            style={{ flex: '1 1 0', minHeight: 0 }}
-          />,
-        );
+        break;
       } else if (ACCORDION_KEYS.has(key)) {
         const comp = accordionComponents[key]?.(key);
         if (comp) accGroup.push({ element: comp, key });
