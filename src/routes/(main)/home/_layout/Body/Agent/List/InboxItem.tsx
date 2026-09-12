@@ -1,9 +1,9 @@
 'use client';
 
 import {
+  AGENT_CHAT_URL,
   DEFAULT_INBOX_AVATAR,
   DESKTOP_HEADER_ICON_SMALL_SIZE,
-  AGENT_CHAT_URL,
 } from '@lobechat/const';
 import { Flexbox, Icon } from '@lobehub/ui';
 import { ActionIcon, Avatar } from '@lobehub/ui/base-ui';

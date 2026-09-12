@@ -1,6 +1,6 @@
 'use client';
 
-import { DEFAULT_AVATAR, DEFAULT_INBOX_AVATAR, AGENT_CHAT_URL } from '@lobechat/const';
+import { AGENT_CHAT_URL,DEFAULT_AVATAR, DEFAULT_INBOX_AVATAR } from '@lobechat/const';
 import { Flexbox, Tooltip } from '@lobehub/ui';
 import { ActionIcon, Avatar } from '@lobehub/ui/base-ui';
 import { createStaticStyles } from 'antd-style';
@@ -10,6 +10,7 @@ import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 
+import { useActiveWorkspaceId } from '@/business/client/hooks/useActiveWorkspaceId';
 import { getRouteById } from '@/config/routes';
 import { DESKTOP_HEADER_ICON_SIZE } from '@/const/layoutTokens';
 import { useActiveTabKey } from '@/hooks/useActiveTabKey';
@@ -17,7 +18,6 @@ import { useAgentStore } from '@/store/agent';
 import { agentSelectors, builtinAgentSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { operationSelectors } from '@/store/chat/selectors';
-import { useActiveWorkspaceId } from '@/business/client/hooks/useActiveWorkspaceId';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
 import { SIDEBAR_SPACER_ID } from '@/store/global/selectors/systemStatus';
