@@ -1,4 +1,4 @@
-import { type SidebarAgentItem } from '@lobechat/types';
+import { type SidebarAgentItem, type SidebarVisibility } from '@lobechat/types';
 import { Flexbox } from '@lobehub/ui';
 import { type CSSProperties } from 'react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -11,8 +11,14 @@ const BATCH_SIZE = 10;
 
 interface SessionListProps {
   dataSource: SidebarAgentItem[];
+  /**
+   * Accepted for compatibility with grouped rendering (Group/Item.tsx); this
+   * list renders a flat, infinite-scroll stream and ignores grouping.
+   */
+  groupId?: string;
   itemClassName?: string;
   itemStyle?: CSSProperties;
+  visibility?: SidebarVisibility;
 }
 
 const List = memo<SessionListProps>(({ dataSource, itemStyle, itemClassName }) => {

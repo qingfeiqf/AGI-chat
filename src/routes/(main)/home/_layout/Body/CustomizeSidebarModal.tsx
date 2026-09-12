@@ -30,6 +30,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useActiveWorkspaceSlug } from '@/business/client/hooks/useActiveWorkspaceSlug';
 import { getRouteById } from '@/config/routes';
+import { useActiveWorkspaceId } from '@/business/client/hooks/useActiveWorkspaceId';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
 import { SIDEBAR_ACCORDION_KEYS, SIDEBAR_SPACER_ID } from '@/store/global/selectors/systemStatus';
@@ -393,9 +394,10 @@ const DndZone = memo<DndZoneProps>(({ hiddenSections, items, onReorder, onToggle
 // ---------------------------------------------------------------------------
 
 const CustomizeSidebarContent = memo(() => {
+  const activeWorkspaceId = useActiveWorkspaceId();
   const [storeItems, hiddenSections, updateSystemStatus] = useGlobalStore((s) => [
-    systemStatusSelectors.sidebarItems(s),
-    systemStatusSelectors.hiddenSidebarSections(s),
+    systemStatusSelectors.sidebarItems(activeWorkspaceId)(s),
+    systemStatusSelectors.hiddenSidebarSections(activeWorkspaceId)(s),
     s.updateSystemStatus,
   ]);
   const isWorkspaceMode = !!useActiveWorkspaceSlug();

@@ -148,8 +148,8 @@ const AgentHeader = memo(() => {
                 <Suspense
                   fallback={
                     <Flexbox gap={8}>
-                      <Skeleton.Button block style={{ height: 38 }} />
-                      <Skeleton.Button block style={{ height: 38 }} />
+                      <Skeleton height={38} width={'100%'} />
+                      <Skeleton height={38} width={'100%'} />
                     </Flexbox>
                   }
                 >

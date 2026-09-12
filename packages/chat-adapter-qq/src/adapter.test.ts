@@ -409,7 +409,7 @@ describe('QQAdapter', () => {
 
   describe('fetchAttachmentData', () => {
     it('should fetch attachment data via fetchData callback', async () => {
-      const imageBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+      const imageBytes = new Uint8Array([0x89, 0x50, 0x4E, 0x47]);
       vi.stubGlobal(
         'fetch',
         vi.fn().mockResolvedValueOnce(new Response(imageBytes, { status: 200 })),
@@ -423,7 +423,7 @@ describe('QQAdapter', () => {
       const data = await message.attachments[0].fetchData!();
 
       expect(data).toBeInstanceOf(Buffer);
-      expect(data.length).toBe(4);
+      expect((data as Buffer).length).toBe(4);
 
       vi.unstubAllGlobals();
     });

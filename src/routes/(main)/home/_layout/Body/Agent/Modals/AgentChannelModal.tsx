@@ -70,7 +70,7 @@ const AgentChannelModal = memo<AgentChannelModalProps>(({ agentId, open, title, 
 
   return (
     <Modal
-      destroyOnClose
+      destroyOnHidden
       className={styles.modal}
       footer={null}
       open={open}

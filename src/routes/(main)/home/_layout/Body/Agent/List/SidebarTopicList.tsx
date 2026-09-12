@@ -325,7 +325,7 @@ const SidebarTopicList = memo<SidebarTopicListProps>(({ agentId }) => {
   useFetchTopics(true, { agentId });
 
   const activeAgentId = useChatStore((s) => s.activeAgentId);
-  const activeTopicId = useChatStore((s) => s.activeTopicId);
+  const activeTopicId = useChatStore((s) => s.activeTopicId ?? null);
   const switchTopic = useChatStore((s) => s.switchTopic);
   const favoriteTopic = useChatStore((s) => s.favoriteTopic);
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { DEFAULT_AVATAR, DEFAULT_INBOX_AVATAR, SESSION_CHAT_URL } from '@lobechat/const';
+import { DEFAULT_AVATAR, DEFAULT_INBOX_AVATAR, AGENT_CHAT_URL } from '@lobechat/const';
 import { Flexbox, Tooltip } from '@lobehub/ui';
 import { ActionIcon, Avatar } from '@lobehub/ui/base-ui';
 import { createStaticStyles } from 'antd-style';
@@ -17,6 +17,7 @@ import { useAgentStore } from '@/store/agent';
 import { agentSelectors, builtinAgentSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { operationSelectors } from '@/store/chat/selectors';
+import { useActiveWorkspaceId } from '@/business/client/hooks/useActiveWorkspaceId';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
 import { SIDEBAR_SPACER_ID } from '@/store/global/selectors/systemStatus';
@@ -138,9 +139,10 @@ const CompactSidebar = memo(() => {
   const { customList, pinnedList, defaultList } = useAgentList();
 
   // Read sidebar items and extract bottom items (after spacer) for dynamic icon order
+  const activeWorkspaceId = useActiveWorkspaceId();
   const [sidebarItems, hiddenSections] = useGlobalStore((s) => [
-    systemStatusSelectors.sidebarItems(s),
-    systemStatusSelectors.hiddenSidebarSections(s),
+    systemStatusSelectors.sidebarItems(activeWorkspaceId)(s),
+    systemStatusSelectors.hiddenSidebarSections(activeWorkspaceId)(s),
   ]);
   const bottomItemIds = useMemo(() => {
     const idx = sidebarItems.indexOf(SIDEBAR_SPACER_ID);
@@ -233,7 +235,7 @@ const CompactSidebar = memo(() => {
       <Flexbox className={styles.avatarList} direction="vertical">
         {agents.map((agent) => {
           const isSelected = activeAgentId === agent.id && activeTab === 'home';
-          const agentUrl = SESSION_CHAT_URL(agent.id, false);
+          const agentUrl = AGENT_CHAT_URL(agent.id, false);
 
           return (
             <AgentAvatarItem

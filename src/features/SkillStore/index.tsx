@@ -24,7 +24,7 @@ export const createSkillStoreModal = () =>
     ),
     footer: null,
     styles: {
-      body: { overflow: 'hidden', padding: 0 },
+      content: { overflow: 'hidden', padding: 0 },
     },
     title: t('skillStore.title', { ns: 'setting' }),
     width: 'min(80%, 800px)',

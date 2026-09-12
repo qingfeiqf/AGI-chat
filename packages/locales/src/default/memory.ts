@@ -12,7 +12,6 @@ export default {
   'analysis.action.button': 'Request memory analysis',
   'analysis.modal.cancel': 'Cancel',
   'analysis.modal.helper':
-  'analysis.modal.helper':
     "By default AGI-chat AI will analyze all unprocessed conversations. It's optional to select a date range to analyze.",
   'analysis.modal.rangePlaceholder': 'No range selected; all conversations will be analyzed.',
   'analysis.modal.rangeSelected': 'Analyzing conversations from {{start}} to {{end}}',

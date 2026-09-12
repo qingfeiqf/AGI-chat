@@ -3,7 +3,7 @@
 import {
   DEFAULT_INBOX_AVATAR,
   DESKTOP_HEADER_ICON_SMALL_SIZE,
-  SESSION_CHAT_URL,
+  AGENT_CHAT_URL,
 } from '@lobechat/const';
 import { Flexbox, Icon } from '@lobehub/ui';
 import { ActionIcon, Avatar } from '@lobehub/ui/base-ui';
@@ -163,7 +163,7 @@ const InboxItem = memo<InboxItemProps>(({ className, style }) => {
   const inboxAgentTitle = inboxMeta.title || 'AGI-chat AI';
   const inboxAgentDesc = inboxMeta.description || '官方预置 AI 对话助手';
   const inboxAgentAvatar = inboxMeta.avatar || DEFAULT_INBOX_AVATAR;
-  const inboxUrl = SESSION_CHAT_URL(inboxAgentId, false);
+  const inboxUrl = AGENT_CHAT_URL(inboxAgentId, false);
 
   // Prefetch agent layout chunk and data eagerly since AGI-chat AI is almost always clicked
   useEffect(() => {

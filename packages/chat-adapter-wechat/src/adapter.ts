@@ -332,7 +332,8 @@ async function loadAttachmentBuffer(
   }
   if (typeof attachment.fetchData === 'function') {
     try {
-      return await attachment.fetchData();
+      const data = await attachment.fetchData();
+      return Buffer.isBuffer(data) ? data : Buffer.from(data);
     } catch (error) {
       logger?.warn?.('Attachment fetchData failed: %s', error);
     }

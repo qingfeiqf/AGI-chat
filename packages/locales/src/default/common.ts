@@ -439,6 +439,7 @@ export default {
   'manageOnlyCreator': 'Only the creator or a workspace owner can do this',
   'operationFailed': 'Operation failed, please try again',
   'addNew': 'Add new',
+  'newAgent': 'New Agent',
   'gotIt': 'Got it',
   'more': 'More',
   'navPanel.agent': 'Agents',

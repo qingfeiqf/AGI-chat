@@ -1,8 +1,8 @@
-import { DESKTOP_HEADER_ICON_SMALL_SIZE, SESSION_CHAT_URL } from '@lobechat/const';
+import { AGENT_CHAT_URL,DESKTOP_HEADER_ICON_SMALL_SIZE } from '@lobechat/const';
 import { HETEROGENEOUS_TYPE_LABELS } from '@lobechat/heterogeneous-agents';
 import { type SidebarAgentItem } from '@lobechat/types';
-import { Flexbox, Icon, Tooltip } from '@lobehub/ui';
-import { ActionIcon, Dropdown, Tag } from '@lobehub/ui/base-ui';
+import { type ContextMenuItem,Flexbox, Icon, showContextMenu, Tooltip } from '@lobehub/ui';
+import { ActionIcon, Tag } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cx } from 'antd-style';
 import {
   ClipboardList,
@@ -218,7 +218,7 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
   const hoverPaddingRight = hoverIconCount * 28 + (hoverIconCount - 1) * 2 + 8; // icons + gaps + margin
 
   const navigate = useNavigate();
-  const agentUrl = SESSION_CHAT_URL(id, false);
+  const agentUrl = AGENT_CHAT_URL(id, false);
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true);
@@ -300,14 +300,17 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <Dropdown menu={{ items: dropdownMenu() as any }} trigger={['contextMenu']}>
-        <Flexbox
-          horizontal
-          align="center"
-          className={cx(styles.container, isSelected && styles.containerActive)}
-          justify="space-between"
-          onClick={handleCardClick}
-        >
+      <Flexbox
+        horizontal
+        align="center"
+        className={cx(styles.container, isSelected && styles.containerActive)}
+        justify="space-between"
+        onClick={handleCardClick}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          showContextMenu(dropdownMenu() as unknown as ContextMenuItem[]);
+        }}
+      >
           <Flexbox horizontal align="center" gap={10} style={{ minWidth: 0, flex: 1 }}>
             <span className={styles.avatarWrapper}>
               {avatarNode}
@@ -378,17 +381,16 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
                         title="助手任务"
                         onClick={(e) => handleActionClick(e, () => openAgentTasksModal(id))}
                       />
-                      <Dropdown menu={{ items: dropdownMenu() as any }} trigger={['click']}>
-                        <ActionIcon
-                          icon={MoreVertical}
-                          size={DESKTOP_HEADER_ICON_SMALL_SIZE}
-                          title="更多操作"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                          }}
-                        />
-                      </Dropdown>
+                      <ActionIcon
+                        icon={MoreVertical}
+                        size={DESKTOP_HEADER_ICON_SMALL_SIZE}
+                        title="更多操作"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          showContextMenu(dropdownMenu() as unknown as ContextMenuItem[]);
+                        }}
+                      />
                     </>
                   )}
                 </div>
@@ -399,7 +401,6 @@ const AgentItem = memo<AgentItemProps>(({ item, style, className, onNavigate }) 
             </Flexbox>
           </Flexbox>
         </Flexbox>
-      </Dropdown>
 
       {/* History topic list inline */}
       {isSelected && showHistory && <SidebarTopicList agentId={id} />}

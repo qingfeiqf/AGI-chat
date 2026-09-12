@@ -28,7 +28,8 @@ export const NAV_PANEL_RIGHT_DRAWER_ID = 'nav-panel-drawer';
 type NavPanelSnapshot = {
   key: string;
   node: ReactNode;
-  order: number;
+  /** Mount-order priority; only set by NavPanelPortal, absent on route fallbacks. */
+  order?: number;
 } | null;
 
 let currentSnapshot: NavPanelSnapshot = null;
@@ -296,7 +297,7 @@ export const NavPanelPortal = memo<NavPanelPortalProps>(({ children, navKey = 'd
     // Only overwrite if no snapshot exists or this portal mounted more recently.
     // This prevents a hidden-but-alive portal (Home inside <Activity mode="hidden">)
     // from overwriting the active route's sidebar when its children reference changes.
-    if (!current || current.order < orderRef.current) {
+    if (!current || (current.order ?? 0) < orderRef.current) {
       setNavPanelSnapshot({ key: navKey, node: children, order: orderRef.current });
     }
   }, [children, navKey]);

@@ -93,15 +93,17 @@ const AgentSelect = memo(() => {
   if (isLoading)
     return (
       <Flexbox horizontal align={'center'} gap={8} height={40} padding={4}>
-        <Skeleton.Button
-          active
-          size={'small'}
-          style={{ borderRadius: cssVar.borderRadius, height: 32, minWidth: 32, width: 32 }}
+        <Skeleton
+          height={32}
+          radius={cssVar.borderRadius}
+          style={{ minWidth: 32 }}
+          width={32}
         />
-        <Skeleton.Button
-          active
-          size={'small'}
-          style={{ borderRadius: cssVar.borderRadius, height: 16, minWidth: 96, opacity: 0.5 }}
+        <Skeleton
+          height={16}
+          radius={cssVar.borderRadius}
+          style={{ minWidth: 96, opacity: 0.5 }}
+          width={96}
         />
       </Flexbox>
     );

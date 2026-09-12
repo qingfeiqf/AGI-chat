@@ -132,7 +132,7 @@ const AgentProfileModal = memo<AgentProfileModalProps>(({ agentId, open, onCance
 
   return (
     <Modal
-      destroyOnClose
+      destroyOnHidden
       className={styles.modal}
       footer={null}
       open={open}
