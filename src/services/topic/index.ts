@@ -10,6 +10,18 @@ import {
   type TopicRankItem,
 } from '@/types/topic';
 
+/**
+ * A row from `queryTopics`. It comes straight off the `topics` table, so it
+ * carries `agentId` even though `ChatTopic` doesn't declare it, plus the
+ * optional last-assistant-reply preview.
+ */
+export interface TopicListItem extends ChatTopic {
+  agentId?: string | null;
+  lastAssistantMessage?: string | null;
+}
+
+export type TopicBatchDeleteScope = 'own' | 'workspace';
+
 type OnboardingSessionMetadataPatch = Partial<NonNullable<ChatTopicMetadata['onboardingSession']>>;
 
 type UpdateTopicMetadataInput = Omit<Partial<ChatTopicMetadata>, 'onboardingSession'> & {
@@ -32,6 +44,10 @@ export class TopicService {
     return lambdaClient.topic.cloneTopic.mutate({ id, newTitle });
   };
 
+  batchMoveTopics = (topicIds: string[], targetAgentId: string) => {
+    return lambdaClient.topic.batchMoveTopics.mutate({ targetAgentId, topicIds });
+  };
+
   importTopic = (params: {
     agentId: string;
     data: string;
@@ -50,13 +66,19 @@ export class TopicService {
       includeTriggers: params.includeTriggers,
       isInbox: params.isInbox,
       pageSize: params.pageSize,
+      sortBy: params.sortBy,
       triggers: params.triggers,
       withDetails: params.withDetails,
     }) as any;
   };
 
-  getAllTopics = (): Promise<ChatTopic[]> => {
-    return lambdaClient.topic.getAllTopics.query() as any;
+  queryTopics = (params?: {
+    pageSize?: number;
+    statuses?: string[];
+    /** Pull each topic's last assistant reply (truncated) alongside the row. */
+    withLastMessage?: boolean;
+  }): Promise<TopicListItem[]> => {
+    return lambdaClient.topic.queryTopics.query(params) as any;
   };
 
   countTopics = async (params?: {
@@ -73,8 +95,17 @@ export class TopicService {
     return lambdaClient.topic.rankTopics.query(limit);
   };
 
+  getMaxTaskDuration = async (): Promise<number> => {
+    return lambdaClient.topic.getMaxTaskDuration.query();
+  };
+
   getRecentTopics = async (limit?: number): Promise<RecentTopic[]> => {
     return lambdaClient.topic.recentTopics.query({ limit });
+  };
+
+  hasTopicFiles = async (ids: string[]): Promise<boolean> => {
+    const result = await lambdaClient.topic.hasTopicFiles.query({ ids });
+    return result.data.hasFiles;
   };
 
   searchTopics = (keywords: string, agentId?: string, groupId?: string): Promise<ChatTopic[]> => {
@@ -109,16 +140,23 @@ export class TopicService {
     return lambdaClient.topic.disableSharing.mutate({ topicId });
   };
 
-  removeTopic = (id: string) => {
-    return lambdaClient.topic.removeTopic.mutate({ id });
+  removeTopic = (id: string, removeFiles?: boolean) => {
+    return lambdaClient.topic.removeTopic.mutate({ id, removeFiles });
   };
 
-  removeTopics = (sessionId: string) => {
-    return lambdaClient.topic.batchDeleteBySessionId.mutate({ id: this.toDbSessionId(sessionId) });
+  removeTopics = (sessionId: string, scope: TopicBatchDeleteScope = 'own') => {
+    return lambdaClient.topic.batchDeleteBySessionId.mutate({
+      id: this.toDbSessionId(sessionId),
+      scope,
+    });
   };
 
-  removeTopicsByAgentId = (agentId: string) => {
-    return lambdaClient.topic.batchDeleteByAgentId.mutate({ agentId });
+  removeTopicsByAgentId = (agentId: string, scope: TopicBatchDeleteScope = 'own') => {
+    return lambdaClient.topic.batchDeleteByAgentId.mutate({ agentId, scope });
+  };
+
+  removeTopicsByGroupId = (groupId: string, scope: TopicBatchDeleteScope = 'own') => {
+    return lambdaClient.topic.batchDeleteByGroupId.mutate({ groupId, scope });
   };
 
   batchRemoveTopics = (topics: string[]) => {

@@ -1,6 +1,7 @@
 'use client';
 
-import { Flexbox, Icon, Text } from '@lobehub/ui';
+import { Flexbox, Icon } from '@lobehub/ui';
+import { Text } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cssVar, responsive } from 'antd-style';
 import { RefreshCw } from 'lucide-react';
 import { memo } from 'react';
@@ -29,12 +30,13 @@ const styles = createStaticStyles(({ css }) => ({
 }));
 
 interface EmptyStateProps {
+  /** When set, scopes task creation to this agent and locks the assignee. */
   agentId?: string;
 }
 
 const EmptyState = memo<EmptyStateProps>(({ agentId }) => {
   const { t } = useTranslation('chat');
-  const { t: tTaskTemplate } = useTranslation('taskTemplate');
+  const { t: tCommon } = useTranslation('common');
   const templatesState = useDailyBriefRecommendationsUI({ count: EMPTY_STATE_RECOMMEND_COUNT });
 
   return (
@@ -44,16 +46,13 @@ const EmptyState = memo<EmptyStateProps>(({ agentId }) => {
       paddingBlock={48}
       wrapperStyle={{ flex: 1, overflowY: 'auto' }}
     >
-      <Flexbox align={'center'} gap={8}>
+      <Flexbox align={'center'}>
         <Text as={'h1'} style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>
           {t('taskList.emptyHero.greeting')}
         </Text>
-        <Text fontSize={14} type={'secondary'}>
-          {t('taskList.emptyHero.subtitle')}
-        </Text>
       </Flexbox>
 
-      <CreateTaskInlineEntry agentId={agentId} variant={'hero'} />
+      <CreateTaskInlineEntry agentId={agentId} lockAssignee={!!agentId} variant={'hero'} />
 
       {templatesState.mode !== 'hidden' && (
         <Flexbox gap={12}>
@@ -70,7 +69,7 @@ const EmptyState = memo<EmptyStateProps>(({ agentId }) => {
                 onClick={templatesState.onRefresh}
               >
                 <Icon icon={RefreshCw} size={12} />
-                <Text fontSize={12}>{tTaskTemplate('action.refresh.button')}</Text>
+                <Text fontSize={12}>{tCommon('taskTemplate.action.refresh.button')}</Text>
               </Flexbox>
             )}
           </Flexbox>

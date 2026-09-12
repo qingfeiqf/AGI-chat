@@ -378,6 +378,32 @@ describe('topicSelectors', () => {
     });
   });
 
+  describe('displayTopicsForSidebar', () => {
+    it('hides completed topics immediately when completed topics are excluded', () => {
+      const now = Date.now();
+      const state = merge(initialStore, {
+        activeAgentId: 'agent-1',
+        topicDataMap: {
+          [topicMapKey({ agentId: 'agent-1' })]: {
+            currentPage: 0,
+            hasMore: false,
+            items: [
+              { createdAt: now, id: 'active', status: 'active', updatedAt: now },
+              { createdAt: now, id: 'completed', status: 'completed', updatedAt: now },
+            ],
+            pageSize: 20,
+            total: 2,
+          },
+        },
+      });
+
+      expect(topicSelectors.displayTopicsForSidebar(20, 'updatedAt', false)(state)).toEqual([
+        expect.objectContaining({ id: 'active' }),
+      ]);
+      expect(topicSelectors.displayTopicsForSidebar(20, 'updatedAt', true)(state)).toHaveLength(2);
+    });
+  });
+
   describe('groupedTopicsForSidebar', () => {
     const now = Date.now();
     const lastYear = dayjs(now).subtract(1, 'year').valueOf();
@@ -460,6 +486,41 @@ describe('topicSelectors', () => {
 
       const totalChildren = grouped.reduce((sum, g) => sum + g.children.length, 0);
       expect(totalChildren).toBe(3);
+    });
+
+    it('should place the pending group right below favorites in byStatus mode', () => {
+      const state = createStateWithTopics([
+        {
+          id: 'fav',
+          title: 'Fav',
+          favorite: true,
+          status: 'active',
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'failed',
+          title: 'Failed',
+          favorite: false,
+          status: 'failed',
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'active',
+          title: 'Active',
+          favorite: false,
+          status: 'active',
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]);
+
+      const grouped = topicSelectors.groupedTopicsForSidebar(20, 'updatedAt', 'byStatus')(state);
+
+      // favorites stay pinned at the top; pending follows right below, then the rest
+      expect(grouped.map((g) => g.id)).toEqual(['favorite', 'pending', 'active']);
+      expect(grouped[1].children.map((t) => t.id)).toEqual(['failed']);
     });
   });
 });

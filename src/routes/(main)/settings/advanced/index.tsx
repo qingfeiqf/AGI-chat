@@ -10,10 +10,12 @@ import { Loader2Icon } from 'lucide-react';
 import { memo, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import AsyncError from '@/components/AsyncError';
 import { FORM_STYLE } from '@/const/layoutTokens';
+import { SettingsSearchAnchor } from '@/features/SettingsSearch/anchor';
 import SettingHeader from '@/routes/(main)/settings/features/SettingHeader';
 import { autoUpdateService } from '@/services/electron/autoUpdate';
-import { useServerConfigStore } from '@/store/serverConfig';
+import { serverConfigSelectors, useServerConfigStore } from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
 import { labPreferSelectors, preferenceSelectors, settingsSelectors } from '@/store/user/selectors';
 
@@ -32,25 +34,52 @@ const Page = memo(() => {
   const { t: tLabs } = useTranslation('labs');
 
   const general = useUserStore((s) => settingsSelectors.currentSettings(s).general, isEqual);
-  const [setSettings, isUserStateInit] = useUserStore((s) => [s.setSettings, s.isUserStateInit]);
+  const defaultAgentGatewayModeEnabled = useUserStore(
+    (s) => settingsSelectors.defaultAgentConfig(s).chatConfig?.disableGatewayMode !== true,
+  );
+  const [setSettings, updateDefaultAgent, isUserStateInit, isUserStateInitError, refreshUserState] =
+    useUserStore((s) => [
+      s.setSettings,
+      s.updateDefaultAgent,
+      s.isUserStateInit,
+      s.isUserStateInitError,
+      s.refreshUserState,
+    ]);
   const [loading, setLoading] = useState(false);
 
   const [
     isPreferenceInit,
+    enableAgentGraphConfig,
     enableInputMarkdown,
-    enableGatewayMode,
     enablePlatformAgent,
-    enableExecutionDeviceSwitcher,
+    enableImessage,
+    enableFleet,
+    enableClaudeCodeSdk,
+    enableFoldFinishedTurn,
+    enableMessageTextSelectionActions,
+    enableOAuthApps,
+    enableInAppBrowser,
+    enableArtifactDeployment,
+    enableBuiltinTerminal,
     updateLab,
   ] = useUserStore((s) => [
     preferenceSelectors.isPreferenceInit(s),
+    labPreferSelectors.enableAgentGraphConfig(s),
     labPreferSelectors.enableInputMarkdown(s),
-    labPreferSelectors.enableGatewayMode(s),
     labPreferSelectors.enablePlatformAgent(s),
-    labPreferSelectors.enableExecutionDeviceSwitcher(s),
+    labPreferSelectors.enableImessage(s),
+    labPreferSelectors.enableFleet(s),
+    labPreferSelectors.enableClaudeCodeSdk(s),
+    labPreferSelectors.enableFoldFinishedTurn(s),
+    labPreferSelectors.enableMessageTextSelectionActions(s),
+    labPreferSelectors.enableOAuthApps(s),
+    labPreferSelectors.enableInAppBrowser(s),
+    labPreferSelectors.enableArtifactDeployment(s),
+    labPreferSelectors.enableBuiltinTerminal(s),
     s.updateLab,
   ]);
 
+  const enableGatewayMode = useServerConfigStore(serverConfigSelectors.enableGatewayMode);
   const hasGatewayUrl = useServerConfigStore((s) => !!s.serverConfig.agentGatewayUrl);
 
   const [channel, setChannel] = useState<UpdateChannelValue>('stable');
@@ -68,18 +97,63 @@ const Page = memo(() => {
     autoUpdateService.setUpdateChannel(value);
   }, []);
 
-  if (!isUserStateInit) return <Skeleton active paragraph={{ rows: 5 }} title={false} />;
+  const handleGatewayModeChange = useCallback(
+    (checked: boolean) => {
+      updateDefaultAgent({
+        config: { chatConfig: { disableGatewayMode: checked ? false : true } },
+      });
+    },
+    [updateDefaultAgent],
+  );
+
+  if (!isUserStateInit) {
+    // A failed user-state init must show error + Retry, not a permanent skeleton
+    //
+    if (isUserStateInitError)
+      return (
+        <AsyncError
+          error={isUserStateInitError}
+          variant={'block'}
+          onRetry={() => refreshUserState()}
+        />
+      );
+    return <Skeleton active paragraph={{ rows: 5 }} title={false} />;
+  }
 
   const advancedGroup: FormGroupItemType = {
     children: [
       {
         children: <Switch />,
         desc: t('settingCommon.devMode.desc'),
-        label: t('settingCommon.devMode.title'),
+        label: (
+          <SettingsSearchAnchor id={'advanced-dev-mode'}>
+            {t('settingCommon.devMode.title')}
+          </SettingsSearchAnchor>
+        ),
         minWidth: undefined,
         name: 'isDevMode',
         valuePropName: 'checked',
       },
+      ...(enableGatewayMode
+        ? [
+            {
+              children: (
+                <Switch
+                  checked={defaultAgentGatewayModeEnabled}
+                  onChange={handleGatewayModeChange}
+                />
+              ),
+              className: styles.labItem,
+              desc: t('tab.advanced.gatewayMode.desc'),
+              label: (
+                <SettingsSearchAnchor id={'advanced-gateway-mode'}>
+                  {t('tab.advanced.gatewayMode.title')}
+                </SettingsSearchAnchor>
+              ),
+              minWidth: undefined,
+            } satisfies FormItemProps,
+          ]
+        : []),
     ],
     extra: loading && <Icon spin icon={Loader2Icon} size={16} style={{ opacity: 0.5 }} />,
     title: t('tab.advanced.toolsAndDiagnostics.title'),
@@ -97,13 +171,30 @@ const Page = memo(() => {
           <Select options={channelOptions} value={channel} onChange={handleChannelChange} />
         ),
         desc: t('tab.advanced.updateChannel.desc'),
-        label: t('tab.advanced.updateChannel.title'),
+        label: (
+          <SettingsSearchAnchor id={'advanced-update-channel'}>
+            {t('tab.advanced.updateChannel.title')}
+          </SettingsSearchAnchor>
+        ),
       },
     ],
     title: t('tab.advanced.appUpdates.title'),
   };
 
   const labItems: FormItemProps[] = [
+    {
+      children: (
+        <Switch
+          checked={enableAgentGraphConfig}
+          loading={!isPreferenceInit}
+          onChange={(checked: boolean) => updateLab({ enableAgentGraphConfig: checked })}
+        />
+      ),
+      className: styles.labItem,
+      desc: tLabs('features.agentGraphConfig.desc'),
+      label: tLabs('features.agentGraphConfig.title'),
+      minWidth: undefined,
+    } satisfies FormItemProps,
     {
       children: (
         <Switch
@@ -120,31 +211,87 @@ const Page = memo(() => {
     {
       children: (
         <Switch
-          checked={enableExecutionDeviceSwitcher}
+          checked={enableFoldFinishedTurn}
           loading={!isPreferenceInit}
-          onChange={(checked) => updateLab({ enableExecutionDeviceSwitcher: checked })}
+          onChange={(checked) => updateLab({ enableFoldFinishedTurn: checked })}
         />
       ),
       className: styles.labItem,
-      desc: tLabs('features.executionDeviceSwitcher.desc'),
-      label: tLabs('features.executionDeviceSwitcher.title'),
+      desc: tLabs('features.foldFinishedTurn.desc'),
+      label: tLabs('features.foldFinishedTurn.title'),
       minWidth: undefined,
     },
-    ...(hasGatewayUrl
+    {
+      children: (
+        <Switch
+          checked={enableMessageTextSelectionActions}
+          loading={!isPreferenceInit}
+          onChange={(checked) => updateLab({ enableMessageTextSelectionActions: checked })}
+        />
+      ),
+      className: styles.labItem,
+      desc: tLabs('features.messageTextSelectionActions.desc'),
+      label: tLabs('features.messageTextSelectionActions.title'),
+      minWidth: undefined,
+    },
+    {
+      children: (
+        <Switch
+          checked={enableOAuthApps}
+          loading={!isPreferenceInit}
+          onChange={(checked) => updateLab({ enableOAuthApps: checked })}
+        />
+      ),
+      className: styles.labItem,
+      desc: tLabs('features.oauthApps.desc'),
+      label: tLabs('features.oauthApps.title'),
+      minWidth: undefined,
+    },
+    ...(isDesktop
       ? [
           {
             children: (
               <Switch
-                checked={enableGatewayMode}
+                checked={enableImessage}
                 loading={!isPreferenceInit}
-                onChange={(checked: boolean) => updateLab({ enableGatewayMode: checked })}
+                onChange={(checked: boolean) => updateLab({ enableImessage: checked })}
               />
             ),
             className: styles.labItem,
-            desc: tLabs('features.gatewayMode.desc'),
-            label: tLabs('features.gatewayMode.title'),
+            desc: tLabs('features.imessage.desc'),
+            label: tLabs('features.imessage.title'),
             minWidth: undefined,
           } satisfies FormItemProps,
+          {
+            children: (
+              <Switch
+                checked={enableFleet}
+                loading={!isPreferenceInit}
+                onChange={(checked: boolean) => updateLab({ enableFleet: checked })}
+              />
+            ),
+            className: styles.labItem,
+            desc: tLabs('features.fleet.desc'),
+            label: tLabs('features.fleet.title'),
+            minWidth: undefined,
+          } satisfies FormItemProps,
+          {
+            children: (
+              <Switch
+                checked={enableClaudeCodeSdk}
+                loading={!isPreferenceInit}
+                onChange={(checked: boolean) => updateLab({ enableClaudeCodeSdk: checked })}
+              />
+            ),
+            className: styles.labItem,
+            desc: tLabs('features.claudeCodeSdk.desc'),
+            label: tLabs('features.claudeCodeSdk.title'),
+            minWidth: undefined,
+          } satisfies FormItemProps,
+        ]
+      : []),
+    ...(hasGatewayUrl
+      ? [
           {
             children: (
               <Switch
@@ -160,11 +307,56 @@ const Page = memo(() => {
           } satisfies FormItemProps,
         ]
       : []),
+    // The in-app browser pages are main-process WebContentsViews — desktop only.
+    ...(isDesktop
+      ? [
+          {
+            children: (
+              <Switch
+                checked={enableInAppBrowser}
+                loading={!isPreferenceInit}
+                onChange={(checked: boolean) => updateLab({ enableInAppBrowser: checked })}
+              />
+            ),
+            className: styles.labItem,
+            desc: tLabs('features.inAppBrowser.desc'),
+            label: tLabs('features.inAppBrowser.title'),
+            minWidth: undefined,
+          } satisfies FormItemProps,
+          // The terminal runs PTY sessions in the Electron main process — desktop only.
+          {
+            children: (
+              <Switch
+                checked={enableBuiltinTerminal}
+                loading={!isPreferenceInit}
+                onChange={(checked: boolean) => updateLab({ enableBuiltinTerminal: checked })}
+              />
+            ),
+            className: styles.labItem,
+            desc: tLabs('features.builtinTerminal.desc'),
+            label: tLabs('features.builtinTerminal.title'),
+            minWidth: undefined,
+          } satisfies FormItemProps,
+        ]
+      : []),
+    {
+      children: (
+        <Switch
+          checked={enableArtifactDeployment}
+          loading={!isPreferenceInit}
+          onChange={(checked: boolean) => updateLab({ enableArtifactDeployment: checked })}
+        />
+      ),
+      className: styles.labItem,
+      desc: tLabs('features.artifactDeployment.desc'),
+      label: tLabs('features.artifactDeployment.title'),
+      minWidth: undefined,
+    } satisfies FormItemProps,
   ];
 
   const labsGroup: FormGroupItemType = {
     children: labItems,
-    title: tLabs('title'),
+    title: <SettingsSearchAnchor id={'advanced-labs'}>{tLabs('title')}</SettingsSearchAnchor>,
   };
 
   const items = isDesktop

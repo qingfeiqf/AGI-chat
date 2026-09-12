@@ -1,15 +1,16 @@
 'use client';
 
-import { Flexbox, Icon, Text } from '@lobehub/ui';
+import { Flexbox, Icon } from '@lobehub/ui';
+import { Text } from '@lobehub/ui/base-ui';
 import type { BreadcrumbProps } from 'antd';
 import { Breadcrumb } from 'antd';
 import { createStaticStyles } from 'antd-style';
 import { ChevronRightIcon, HomeIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { memo, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 import { DESKTOP_HEADER_ICON_SMALL_SIZE } from '@/const/layoutTokens';
+import { useWorkspaceAwareNavigate } from '@/features/Workspace/useWorkspaceAwareNavigate';
 
 import BackButton from './components/BackButton';
 import ToggleLeftPanelButton from './ToggleLeftPanelButton';
@@ -43,9 +44,13 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
   `,
 }));
 
+type BreadcrumbItem = NonNullable<BreadcrumbProps['items']>[number];
+
 interface SideBarHeaderLayoutProps {
   backTo?: string;
   breadcrumb?: BreadcrumbProps['items'];
+  /** Override the leading home breadcrumb item (defaults to home icon → `/`). */
+  homeItem?: BreadcrumbItem;
   left?: ReactNode;
   right?: ReactNode;
   showBack?: boolean;
@@ -59,14 +64,15 @@ const SideBarHeaderLayout = memo<SideBarHeaderLayoutProps>(
     backTo = '/',
     showBack = true,
     breadcrumb = [],
+    homeItem,
     showTogglePanelButton = true,
   }) => {
-    const navigate = useNavigate();
+    const navigate = useWorkspaceAwareNavigate();
 
     const breadcrumbItems = useMemo(
       () =>
         [
-          {
+          homeItem ?? {
             href: '/',
             title: <Icon icon={HomeIcon} />,
           },
@@ -80,7 +86,7 @@ const SideBarHeaderLayout = memo<SideBarHeaderLayoutProps>(
               }
             : undefined,
         })),
-      [breadcrumb, navigate],
+      [homeItem, breadcrumb, navigate],
     );
 
     const leftContent = left ? (

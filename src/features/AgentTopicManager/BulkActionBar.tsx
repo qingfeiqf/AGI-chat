@@ -1,14 +1,15 @@
 'use client';
 
 import { ActionIcon, Flexbox, Text } from '@lobehub/ui';
-import { App } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
 import { Archive, Star, Trash2, X } from 'lucide-react';
 import { memo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { confirmRemoveTopic } from '@/features/DeleteTopicConfirm';
 import { useChatStore } from '@/store/chat';
 
+import MoveToAgentButton from './MoveToAgentButton';
 import { useTopicsViewStore } from './store';
 
 const styles = createStaticStyles(({ css }) => ({
@@ -44,7 +45,6 @@ const styles = createStaticStyles(({ css }) => ({
 
 const BulkActionBar = memo(() => {
   const { t } = useTranslation('topic');
-  const { modal } = App.useApp();
 
   const selectedIds = useTopicsViewStore((s) => s.selectedIds);
   const exitSelectMode = useTopicsViewStore((s) => s.exitSelectMode);
@@ -68,21 +68,21 @@ const BulkActionBar = memo(() => {
   }, [selectedIds, updateTopicStatus, exitSelectMode]);
 
   const handleBatchDelete = useCallback(() => {
-    modal.confirm({
+    void confirmRemoveTopic({
       content: t('management.bulk.deleteConfirm', { count: selectedIds.length }),
-      okButtonProps: { danger: true },
       okText: t('management.bulk.delete'),
-      onOk: async () => {
+      onConfirm: async (removeFiles) => {
         // Serial removal so each call's optimistic update + refetch resolves
         // cleanly; parallel removeTopic causes cascading refetches.
         for (const id of selectedIds) {
-          await removeTopic(id);
+          await removeTopic(id, removeFiles);
         }
         exitSelectMode();
       },
       title: t('management.bulk.deleteTitle'),
+      topicIds: selectedIds,
     });
-  }, [selectedIds, modal, t, removeTopic, exitSelectMode]);
+  }, [selectedIds, t, removeTopic, exitSelectMode]);
 
   if (selectedIds.length === 0) return null;
 
@@ -104,6 +104,7 @@ const BulkActionBar = memo(() => {
           title={t('management.bulk.archive')}
           onClick={handleBatchArchive}
         />
+        <MoveToAgentButton />
         <ActionIcon
           icon={Trash2}
           size={'small'}

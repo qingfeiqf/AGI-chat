@@ -5,12 +5,13 @@ import {
   DESKTOP_HEADER_ICON_SMALL_SIZE,
   SESSION_CHAT_URL,
 } from '@lobechat/const';
-import { ActionIcon, Avatar, Flexbox, Icon } from '@lobehub/ui';
-import { createStyles } from 'antd-style';
+import { Flexbox, Icon } from '@lobehub/ui';
+import { ActionIcon, Avatar } from '@lobehub/ui/base-ui';
+import { createStaticStyles, cx } from 'antd-style';
 import { ClipboardList, History, Loader2, MessageSquarePlus } from 'lucide-react';
 import { type CSSProperties, memo, useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 
+import { useWorkspaceAwareNavigate } from '@/features/Workspace/useWorkspaceAwareNavigate';
 import { usePrefetchAgent } from '@/hooks/usePrefetchAgent';
 import { useAgentStore } from '@/store/agent';
 import { agentSelectors, builtinAgentSelectors } from '@/store/agent/selectors';
@@ -21,7 +22,7 @@ import { prefetchRoute } from '@/utils/router';
 import { useAgentModal } from '../ModalProvider';
 import SidebarTopicList from './SidebarTopicList';
 
-const useStyles = createStyles(({ css, cssVar }) => ({
+const styles = createStaticStyles(({ css, cssVar }) => ({
   outerContainer: css`
     position: relative;
 
@@ -142,8 +143,7 @@ interface InboxItemProps {
 }
 
 const InboxItem = memo<InboxItemProps>(({ className, style }) => {
-  const { styles, cx } = useStyles();
-  const navigate = useNavigate();
+  const navigate = useWorkspaceAwareNavigate();
 
   const inboxAgentId = useAgentStore(builtinAgentSelectors.inboxAgentId);
   const inboxMeta = useAgentStore(agentSelectors.getAgentMetaById(inboxAgentId!));
@@ -157,7 +157,7 @@ const InboxItem = memo<InboxItemProps>(({ className, style }) => {
   const [showHistory, setShowHistory] = useState(true);
 
   const isLoading = useChatStore(
-    inboxAgentId ? operationSelectors.isAgentRunning(inboxAgentId) : () => false,
+    inboxAgentId ? operationSelectors.isAgentVisiblyRunning(inboxAgentId) : () => false,
   );
   const prefetchAgent = usePrefetchAgent();
   const inboxAgentTitle = inboxMeta.title || 'AGI-chat AI';

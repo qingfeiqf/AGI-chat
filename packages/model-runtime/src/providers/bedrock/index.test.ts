@@ -75,6 +75,22 @@ describe('LobeBedrockAI', () => {
       expect(instance).toBeInstanceOf(LobeBedrockAI);
     });
 
+    it('should correctly initialize with API key authentication', async () => {
+      const instance = new LobeBedrockAI({
+        apiKey: 'test-bedrock-api-key',
+        region: 'us-west-2',
+      });
+
+      expect(instance).toBeInstanceOf(LobeBedrockAI);
+      expect(instance.region).toBe('us-west-2');
+      await expect(instance['client'].config.authSchemePreference()).resolves.toEqual([
+        'httpBearerAuth',
+      ]);
+      await expect(instance['client'].config.token?.()).resolves.toEqual({
+        token: 'test-bedrock-api-key',
+      });
+    });
+
     it('should throw InvalidBedrockCredentials if accessKeyId is missing', () => {
       expect(() => {
         new LobeBedrockAI({
@@ -787,6 +803,40 @@ describe('LobeBedrockAI', () => {
             modelId: 'claude-opus-4-1',
           });
         });
+
+        it('should resolve Claude model IDs from channel modelIdMapping', async () => {
+          // Arrange
+          const mappedInstance = new LobeBedrockAI({
+            region: 'us-east-1',
+            accessKeyId: 'test-access-key-id',
+            accessKeySecret: 'test-access-key-secret',
+            modelIdMapping: {
+              'claude-opus-4-8': 'us.anthropic.claude-opus-4-8',
+            },
+          });
+          const mockStream = new ReadableStream({
+            start(controller) {
+              controller.enqueue('Hello, world!');
+              controller.close();
+            },
+          });
+          const mockResponse = Promise.resolve(mockStream);
+          vi.spyOn(mappedInstance['client'], 'send').mockResolvedValue(mockResponse as any);
+
+          // Act
+          await mappedInstance.chat({
+            messages: [{ content: 'Hello', role: 'user' }],
+            model: 'claude-opus-4-8',
+            temperature: 0.7,
+          });
+
+          // Assert
+          expect(InvokeModelWithResponseStreamCommand).toHaveBeenCalledWith(
+            expect.objectContaining({
+              modelId: 'us.anthropic.claude-opus-4-8',
+            }),
+          );
+        });
       });
 
       it('should handle errors and throw AgentRuntimeError', async () => {
@@ -1108,6 +1158,51 @@ describe('LobeBedrockAI', () => {
           totalTokens: 150,
         }),
       );
+    });
+
+    it('should resolve generateObject model IDs from channel modelIdMapping', async () => {
+      const mappedInstance = new LobeBedrockAI({
+        region: 'us-east-1',
+        accessKeyId: 'test-access-key-id',
+        accessKeySecret: 'test-access-key-secret',
+        modelIdMapping: {
+          'claude-opus-4-8': 'us.anthropic.claude-opus-4-8',
+        },
+      });
+      const mockResponse = {
+        body: new TextEncoder().encode(
+          JSON.stringify({
+            content: [
+              {
+                input: { title: 'Mapped' },
+                name: 'mapped_schema',
+                type: 'tool_use',
+              },
+            ],
+          }),
+        ),
+      };
+      vi.spyOn(mappedInstance['client'], 'send').mockResolvedValue(mockResponse as any);
+
+      await mappedInstance.generateObject({
+        messages: [{ content: 'Create a title.', role: 'user' }],
+        model: 'claude-opus-4-8',
+        schema: {
+          name: 'mapped_schema',
+          schema: {
+            additionalProperties: false,
+            properties: {
+              title: { type: 'string' },
+            },
+            required: ['title'],
+            type: 'object',
+          },
+          strict: true,
+        },
+      });
+
+      const commandInput = (InvokeModelCommand as unknown as Mock).mock.calls.at(-1)?.[0];
+      expect(commandInput.modelId).toBe('us.anthropic.claude-opus-4-8');
     });
 
     it('should return tool calls when tools are provided', async () => {

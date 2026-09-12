@@ -3,6 +3,8 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useCreateHeteroAgent } from '@/hooks/useCreateHeteroAgent';
+import { useShallow } from 'zustand/react/shallow';
+
 import { useHomeStore } from '@/store/home';
 import { homeAgentListSelectors } from '@/store/home/selectors';
 
@@ -17,7 +19,7 @@ interface EligibleActionsResult {
 
 export const useEligibleActions = (): EligibleActionsResult => {
   const { t } = useTranslation('home');
-  const agents = useHomeStore(homeAgentListSelectors.allAgents);
+  const agents = useHomeStore(useShallow(homeAgentListSelectors.allAgents));
   const heteroDetections = useHeteroDetections();
   const createHeteroAgent = useCreateHeteroAgent();
 

@@ -1,6 +1,6 @@
 ---
 name: hotkey
-description: "Adding or editing keyboard shortcuts in LobeHub. Use when registering a new hotkey, changing a key combo, scoping a shortcut to chat vs global, or wiring a hotkey hook + tooltip. Covers the 5-step flow: add to `HotkeyEnum` in `src/types/hotkey.ts`, register in `HOTKEYS_REGISTRATION` (`src/const/hotkeys.ts`) with `combineKeys([Key.Mod, …])`, add i18n in `src/locales/default/hotkey.ts`, expose via `useHotkeyById` in `src/hooks/useHotkeys/`, and render `<Tooltip hotkey={…}>`. Triggers on `HotkeyEnum`, `HOTKEYS_REGISTRATION`, `useHotkeyById`, `combineKeys`, `Key.Mod`/`Key.Shift`, 'add a hotkey', 'add a shortcut', '加快捷键', '快捷键', 'Cmd+K', 'keyboard shortcut', 'hotkey scope', 'hotkey conflict'."
+description: 'Add or edit LobeHub keyboard shortcuts. Use for HotkeyEnum, HOTKEYS_REGISTRATION, combineKeys, useHotkeyById, tooltip hotkeys, shortcut scope, conflicts, or Cmd/Ctrl key combos.'
 user-invocable: false
 ---
 
@@ -38,7 +38,7 @@ export const HOTKEYS_REGISTRATION: HotkeyRegistration = [
 
 ### 3. Add i18n Translation
 
-In `src/locales/default/hotkey.ts`:
+In `packages/locales/src/default/hotkey.ts`:
 
 ```typescript
 const hotkey: HotkeyI18nTranslations = {
@@ -86,6 +86,6 @@ const clearChatHotkey = useUserStore(settingsSelectors.getHotkeyById(HotkeyEnum.
 ## Troubleshooting
 
 - **Not working**: Check scope and RegisterHotkeys hook
-- **Not in settings**: Verify HOTKEYS_REGISTRATION config
+- **Not in settings**: Verify HOTKEYS\_REGISTRATION config
 - **Conflict**: HotkeyInput component shows warnings
 - **Page-specific**: Ensure correct scope activation

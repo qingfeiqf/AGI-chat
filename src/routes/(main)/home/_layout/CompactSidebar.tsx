@@ -1,13 +1,14 @@
 'use client';
 
 import { DEFAULT_AVATAR, DEFAULT_INBOX_AVATAR, SESSION_CHAT_URL } from '@lobechat/const';
-import { ActionIcon, Avatar, Flexbox, Tooltip } from '@lobehub/ui';
-import { createStyles } from 'antd-style';
+import { Flexbox, Tooltip } from '@lobehub/ui';
+import { ActionIcon, Avatar } from '@lobehub/ui/base-ui';
+import { createStaticStyles } from 'antd-style';
 import isEqual from 'fast-deep-equal';
 import { MessageSquarePlus, Settings } from 'lucide-react';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { getRouteById } from '@/config/routes';
 import { DESKTOP_HEADER_ICON_SIZE } from '@/const/layoutTokens';
@@ -42,7 +43,7 @@ const SIDEBAR_TO_ROUTE_ID: Record<string, string> = {
   tasks: 'tasks',
 };
 
-const useStyles = createStyles(({ css, cssVar }) => ({
+const styles = createStaticStyles(({ css, cssVar }) => ({
   container: css`
     position: relative;
 
@@ -124,7 +125,6 @@ const useStyles = createStyles(({ css, cssVar }) => ({
 }));
 
 const CompactSidebar = memo(() => {
-  const { styles } = useStyles();
   const { t } = useTranslation('common');
   const activeAgentId = useChatStore((s) => s.activeAgentId);
   const openNewTopicOrSaveTopic = useChatStore((s) => s.openNewTopicOrSaveTopic);
@@ -135,7 +135,7 @@ const CompactSidebar = memo(() => {
   const inboxAgentTitle = inboxMeta.title || '随便聊聊';
   const inboxAgentAvatar = inboxMeta.avatar || DEFAULT_INBOX_AVATAR;
 
-  const { customList, pinnedList, defaultList } = useAgentList(false);
+  const { customList, pinnedList, defaultList } = useAgentList();
 
   // Read sidebar items and extract bottom items (after spacer) for dynamic icon order
   const [sidebarItems, hiddenSections] = useGlobalStore((s) => [
@@ -288,7 +288,6 @@ interface AgentAvatarItemProps {
 }
 
 const AgentAvatarItem = memo<AgentAvatarItemProps>(({ agent, isSelected, agentUrl }) => {
-  const { styles } = useStyles();
   const unreadCount = useChatStore(operationSelectors.agentUnreadCount(agent.id));
   const storeMeta = useAgentStore((s) => agentSelectors.getAgentMetaById(agent.id)(s), isEqual);
   const avatar = storeMeta.avatar || agent.avatar;

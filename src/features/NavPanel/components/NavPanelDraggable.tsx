@@ -1,16 +1,21 @@
 'use client';
 
-import { DraggablePanel } from '@lobehub/ui';
+import { DraggablePanel } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cssVar } from 'antd-style';
 import { type ReactNode } from 'react';
 import { memo, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
+import NavPanelUpgradeEntry from '@/business/client/features/NavPanelUpgradeEntry';
 import { isDesktop } from '@/const/version';
 import { TOGGLE_BUTTON_ID } from '@/features/NavPanel/ToggleLeftPanelButton';
 import Footer from '@/routes/(main)/home/_layout/Footer';
 import { USER_DROPDOWN_ICON_ID } from '@/routes/(main)/home/_layout/Header/components/User';
 import { useGlobalStore } from '@/store/global';
-import { systemStatusSelectors } from '@/store/global/selectors';
+import {
+  NAV_PANEL_MAX_WIDTH,
+  NAV_PANEL_MIN_WIDTH,
+  systemStatusSelectors,
+} from '@/store/global/selectors';
 import { isMacOS } from '@/utils/platform';
 
 import { BACK_BUTTON_ID } from './BackButton';
@@ -160,8 +165,8 @@ export const NavPanelDraggable = memo<NavPanelDraggableProps>(({ activeContent }
       defaultSize={defaultSize}
       expand={true}
       expandable={false}
-      maxWidth={expand ? 400 : 64}
-      minWidth={expand ? 240 : 64}
+      maxWidth={expand ? NAV_PANEL_MAX_WIDTH : 64}
+      minWidth={expand ? NAV_PANEL_MIN_WIDTH : 64}
       placement="left"
       showBorder={false}
       size={{ height: '100%', width: currentWidth }}
@@ -174,7 +179,9 @@ export const NavPanelDraggable = memo<NavPanelDraggableProps>(({ activeContent }
           {activeContent.node}
         </div>
       </div>
-
+      <Suspense fallback={null}>
+        <NavPanelUpgradeEntry />
+      </Suspense>
       <Suspense>{expand && <Footer />}</Suspense>
     </DraggablePanel>
   );

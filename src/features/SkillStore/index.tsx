@@ -1,6 +1,6 @@
 'use client';
 
-import { createModal } from '@lobehub/ui';
+import { createModal } from '@lobehub/ui/base-ui';
 import { t } from 'i18next';
 
 import ModalPopupScope from '@/components/ModalPopupScope';
@@ -11,8 +11,7 @@ import { SkillStoreContent } from './SkillStoreContent';
 
 export const createSkillStoreModal = () =>
   createModal({
-    allowFullscreen: true,
-    children: (
+    content: (
       <MarketAuthProvider isDesktop={isDesktop}>
         {/* ModalPopupScope portals antd + base-ui popups into THIS modal's wrap so
             they render above the modal content (not behind it). The modal itself
@@ -23,7 +22,6 @@ export const createSkillStoreModal = () =>
         </ModalPopupScope>
       </MarketAuthProvider>
     ),
-    destroyOnHidden: false,
     footer: null,
     styles: {
       body: { overflow: 'hidden', padding: 0 },

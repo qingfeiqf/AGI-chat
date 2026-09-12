@@ -1,3 +1,4 @@
+import { getModelKnowledgeCutoff } from '../const/knowledgeCutoff';
 import type { ModelProvider } from '../const/modelProvider';
 import { type AiFullModelCard, type LobeDefaultAiModelListItem } from '../types/aiModel';
 import { default as ai21 } from './ai21';
@@ -5,6 +6,7 @@ import { default as ai302 } from './ai302';
 import { default as ai360 } from './ai360';
 import { default as aihubmix } from './aihubmix';
 import { default as akashchat } from './akashchat';
+import { default as antgroup } from './antgroup';
 import { default as anthropic } from './anthropic';
 import { default as azure } from './azure';
 import { default as azureai } from './azureai';
@@ -63,6 +65,7 @@ import { default as spark } from './spark';
 import { default as stepfun } from './stepfun';
 import { default as straico } from './straico';
 import { default as streamlake } from './streamlake';
+import { default as supergrok } from './superGrok';
 import { default as taichu } from './taichu';
 import { default as tencentcloud } from './tencentcloud';
 import { default as togetherai } from './togetherai';
@@ -96,6 +99,7 @@ const buildDefaultModelList = (map: ModelsMap): LobeDefaultAiModelListItem[] => 
       ...model,
       abilities: model.abilities ?? {},
       enabled: model.enabled || false,
+      knowledgeCutoff: model.knowledgeCutoff ?? getModelKnowledgeCutoff(model.id),
       providerId: provider,
       source: 'builtin',
     }));
@@ -111,6 +115,7 @@ const staticModelMap: ModelsMap = {
   ai360,
   aihubmix,
   akashchat,
+  antgroup,
   anthropic,
   azure,
   azureai,
@@ -169,6 +174,7 @@ const staticModelMap: ModelsMap = {
   stepfun,
   straico,
   streamlake,
+  supergrok,
   taichu,
   tencentcloud,
   togetherai,
@@ -224,6 +230,7 @@ export { default as ai302 } from './ai302';
 export { default as ai360 } from './ai360';
 export { default as aihubmix } from './aihubmix';
 export { default as akashchat } from './akashchat';
+export { default as antgroup } from './antgroup';
 export { default as anthropic } from './anthropic';
 export { default as azure } from './azure';
 export { default as azureai } from './azureai';
@@ -282,6 +289,7 @@ export { default as spark } from './spark';
 export { default as stepfun } from './stepfun';
 export { default as straico } from './straico';
 export { default as streamlake } from './streamlake';
+export { default as supergrok } from './superGrok';
 export { default as taichu } from './taichu';
 export { default as tencentcloud } from './tencentcloud';
 export { default as togetherai } from './togetherai';

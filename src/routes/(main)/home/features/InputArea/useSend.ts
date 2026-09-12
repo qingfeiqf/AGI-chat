@@ -1,7 +1,9 @@
-import { SESSION_CHAT_TOPIC_URL, SESSION_CHAT_URL } from '@lobechat/const';
+import { AGENT_CHAT_TOPIC_URL, AGENT_CHAT_URL } from '@lobechat/const';
 import { useCallback } from 'react';
 
+import { useActiveWorkspaceSlug } from '@/business/client/hooks/useActiveWorkspaceSlug';
 import type { SendButtonHandler } from '@/features/ChatInput/store/initialState';
+import { buildMessageContextSelections } from '@/features/ChatInput/utils/contextSelections';
 import { useHomeDailyBrief } from '@/hooks/useHomeDailyBrief';
 import { useQueryRoute } from '@/hooks/useQueryRoute';
 import { agentService } from '@/services/agent';
@@ -38,6 +40,7 @@ const ensureAgentConfigLoaded = async (agentId: string): Promise<void> => {
 
 export const useSend = () => {
   const router = useQueryRoute();
+  const activeWorkspaceSlug = useActiveWorkspaceSlug();
   const sendMessage = useChatStore((s) => s.sendMessage);
   const clearChatUploadFileList = useFileStore((s) => s.clearChatUploadFileList);
   const clearChatContextSelections = useFileStore((s) => s.clearChatContextSelections);
@@ -92,19 +95,39 @@ export const useSend = () => {
       if (!message && fileList.length === 0 && contextList.length === 0) return;
 
       try {
+        const { contextSelections, pageSelections } = buildMessageContextSelections(contextList);
+
         switch (inputActiveMode) {
           case 'agent': {
-            await sendAsAgent({ editorData, message });
+            await sendAsAgent({
+              contextSelections,
+              editorData,
+              message,
+              pageSelections,
+              workspaceSlug: activeWorkspaceSlug,
+            });
             break;
           }
 
           case 'group': {
-            await sendAsGroup({ editorData, message });
+            await sendAsGroup({
+              contextSelections,
+              editorData,
+              message,
+              pageSelections,
+              workspaceSlug: activeWorkspaceSlug,
+            });
             break;
           }
 
           case 'write': {
-            await sendAsWrite({ editorData, message });
+            await sendAsWrite({
+              contextSelections,
+              editorData,
+              message,
+              pageSelections,
+              workspaceSlug: activeWorkspaceSlug,
+            });
             break;
           }
 
@@ -122,46 +145,37 @@ export const useSend = () => {
             // yet — block on the fetch so sendMessage finds a real config below.
             await ensureAgentConfigLoaded(activeAgentId);
 
-            // When the sidebar is expanded, we stay in the home layout and let
-            // the inline SidebarTopicList update in place — no route navigation.
-            // When the sidebar is collapsed (compact mode), we navigate normally.
+            // When the sidebar is expanded, the inline SidebarTopicList updates in
+            // place under the agent card — switch to the new topic as soon as it is
+            // created so it appears and highlights without drill-down navigation.
+            // When the sidebar is collapsed (compact mode), just navigate normally.
             const isExpanded = systemStatusSelectors.showLeftPanel(useGlobalStore.getState());
 
-            if (isExpanded) {
-              // In expanded sidebar mode, navigate to the agent route for chat content,
-              // BUT the sidebar will still show the Home assistant list (handled by
-              // agent/_layout/Sidebar/index.tsx which renders HomeBody when expanded).
-              // The agent card's inline topic list will update via activeAgentId/activeTopicId.
-              sendMessage({
-                context: { agentId: activeAgentId, isolatedTopic: true },
-                contexts: contextList,
-                editorData,
-                files: fileList,
-                message,
-                onTopicCreated: (topicId) => {
-                  // Switch to the new topic — this sets activeTopicId and triggers
-                  // refreshMessages(), SidebarTopicList shows + highlights the new topic.
+            sendMessage({
+              context: {
+                agentId: activeAgentId,
+                isolatedTopic: true,
+                ...(activeWorkspaceSlug ? { workspaceSlug: activeWorkspaceSlug } : {}),
+              },
+              contextSelections,
+              contexts: contextList,
+              editorData,
+              files: fileList,
+              message,
+              onTopicCreated: (topicId) => {
+                // Expanded mode: switch to the new topic — this sets activeTopicId
+                // and triggers refreshMessages(), so SidebarTopicList shows and
+                // highlights the new topic (agent/_layout/Sidebar renders HomeBody
+                // when expanded). Collapsed mode: route replace only.
+                if (isExpanded) {
                   useChatStore.getState().switchTopic(topicId);
-                  router.replace(SESSION_CHAT_TOPIC_URL(activeAgentId, topicId, false));
-                },
-              });
+                }
+                router.replace(AGENT_CHAT_TOPIC_URL(activeAgentId, topicId, false));
+              },
+              pageSelections,
+            });
 
-              router.push(SESSION_CHAT_URL(activeAgentId, false));
-            } else {
-              // Compact / collapsed sidebar: navigate to the agent chat page
-              sendMessage({
-                context: { agentId: activeAgentId, isolatedTopic: true },
-                contexts: contextList,
-                editorData,
-                files: fileList,
-                message,
-                onTopicCreated: (topicId) => {
-                  router.replace(SESSION_CHAT_TOPIC_URL(activeAgentId, topicId, false));
-                },
-              });
-
-              router.push(SESSION_CHAT_URL(activeAgentId, false));
-            }
+            router.push(AGENT_CHAT_URL(activeAgentId, false));
           }
         }
       } finally {
@@ -173,6 +187,7 @@ export const useSend = () => {
     },
     [
       activeAgentId,
+      activeWorkspaceSlug,
       sendMessage,
       clearChatContextSelections,
       clearChatUploadFileList,

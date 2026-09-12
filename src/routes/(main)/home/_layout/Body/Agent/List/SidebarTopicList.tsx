@@ -2,7 +2,7 @@
 
 import { type ChatTopic } from '@lobechat/types';
 import { Flexbox, Icon } from '@lobehub/ui';
-import { createStyles } from 'antd-style';
+import { createStaticStyles, cx } from 'antd-style';
 import { ChevronDown, ChevronRight, Heart, MessageSquareDot } from 'lucide-react';
 import type { MouseEvent } from 'react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -12,7 +12,7 @@ import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
 
 /* ─────────────────────────── styles ─────────────────────────── */
-const useStyles = createStyles(({ css, cssVar }) => ({
+const styles = createStaticStyles(({ css, cssVar }) => ({
   wrapper: css`
     padding-block: 4px 0;
     padding-inline: 0;
@@ -219,14 +219,12 @@ const GROUP_BATCH_SIZE = 15;
 
 interface CollapsibleGroupProps {
   activeTopicId: string | null;
-  cx: ReturnType<typeof useStyles>['cx'];
   defaultOpen?: boolean;
   isAgentActive: boolean;
   items: ChatTopic[];
   label: string;
   onFavoriteToggle: (topicId: string, favorite: boolean, e: MouseEvent) => void;
   onSwitch: (topicId: string | null, e?: MouseEvent) => void;
-  styles: ReturnType<typeof useStyles>['styles'];
 }
 
 const CollapsibleGroup = memo<CollapsibleGroupProps>(
@@ -238,8 +236,6 @@ const CollapsibleGroup = memo<CollapsibleGroupProps>(
     onSwitch,
     activeTopicId,
     isAgentActive,
-    styles,
-    cx,
   }) => {
     const [open, setOpen] = useState(defaultOpen);
     const sentinelRef = useRef<HTMLDivElement>(null);
@@ -300,9 +296,9 @@ const CollapsibleGroup = memo<CollapsibleGroupProps>(
               onClick={(e) => onSwitch(topic.id, e)}
             >
               <Icon
+                className={cx(styles.favoriteIcon, topic.favorite && styles.favoriteIconActive)}
                 icon={Heart}
                 size={13}
-                className={cx(styles.favoriteIcon, topic.favorite && styles.favoriteIconActive)}
                 onClick={(e) => onFavoriteToggle(topic.id, !topic.favorite, e)}
               />
               <span className={styles.topicTitle}>{topic.title || '未命名话题'}</span>
@@ -323,7 +319,6 @@ interface SidebarTopicListProps {
 }
 
 const SidebarTopicList = memo<SidebarTopicListProps>(({ agentId }) => {
-  const { styles, cx } = useStyles();
   const { t } = useTranslation('topic');
 
   const useFetchTopics = useChatStore((s) => s.useFetchTopics);
@@ -397,12 +392,10 @@ const SidebarTopicList = memo<SidebarTopicListProps>(({ agentId }) => {
         {favTopics.length > 0 && (
           <CollapsibleGroup
             activeTopicId={activeTopicId}
-            cx={cx}
             defaultOpen={true}
             isAgentActive={isAgentActive}
             items={favTopics}
             label={t('favorite')}
-            styles={styles}
             onFavoriteToggle={handleFavoriteToggle}
             onSwitch={handleSwitch}
           />
@@ -412,13 +405,11 @@ const SidebarTopicList = memo<SidebarTopicListProps>(({ agentId }) => {
         {timeGroups.map(({ label, items }) => (
           <CollapsibleGroup
             activeTopicId={activeTopicId}
-            cx={cx}
             defaultOpen={true}
             isAgentActive={isAgentActive}
             items={items}
             key={label}
             label={label}
-            styles={styles}
             onFavoriteToggle={handleFavoriteToggle}
             onSwitch={handleSwitch}
           />

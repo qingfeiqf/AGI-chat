@@ -1,16 +1,17 @@
 'use client';
 
-import { ActionIcon, Flexbox, Icon } from '@lobehub/ui';
-import { createStyles } from 'antd-style';
+import { Flexbox, Icon } from '@lobehub/ui';
+import { ActionIcon } from '@lobehub/ui/base-ui';
+import { createStaticStyles } from 'antd-style';
 import { Home, MessageSquarePlus, PanelLeftClose, Search } from 'lucide-react';
 import { memo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import { DESKTOP_HEADER_ICON_SMALL_SIZE } from '@/const/layoutTokens';
 import { useChatStore } from '@/store/chat';
 import { useGlobalStore } from '@/store/global';
 
-const useStyles = createStyles(({ css, cssVar }) => ({
+const styles = createStaticStyles(({ css, cssVar }) => ({
   container: css`
     padding-block: 12px 8px;
     padding-inline: 12px 8px;
@@ -67,7 +68,6 @@ const useStyles = createStyles(({ css, cssVar }) => ({
 }));
 
 const Header = memo(() => {
-  const { styles } = useStyles();
   const navigate = useNavigate();
   const toggleCommandMenu = useGlobalStore((s) => s.toggleCommandMenu);
   const togglePanel = useGlobalStore((s) => s.toggleLeftPanel);

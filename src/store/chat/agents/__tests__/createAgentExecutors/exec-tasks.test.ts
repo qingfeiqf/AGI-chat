@@ -3,7 +3,7 @@ import {
   type SubAgentsBatchResultPayload,
 } from '@lobechat/agent-runtime';
 import { type Mock } from 'vitest';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { aiAgentService } from '@/services/aiAgent';
 
@@ -16,12 +16,14 @@ vi.mock('@/services/aiAgent', () => ({
   aiAgentService: {
     execSubAgentTask: vi.fn(),
     getSubAgentTaskStatus: vi.fn(),
+    interruptTask: vi.fn(),
   },
 }));
 
 // Helper to get typed mocks
 const mockExecSubAgentTask = aiAgentService.execSubAgentTask as Mock;
 const mockGetSubAgentTaskStatus = aiAgentService.getSubAgentTaskStatus as Mock;
+const mockInterruptTask = aiAgentService.interruptTask as Mock;
 
 describe('exec_sub_agents executor', () => {
   beforeEach(() => {
@@ -38,9 +40,6 @@ describe('exec_sub_agents executor', () => {
         'msg_parent',
       );
       const state = createInitialState({ operationId: 'test-op' });
-
-      // Mock task message creation
-      (mockStore.optimisticCreateMessage as Mock).mockResolvedValueOnce({ id: 'task_msg_1' });
 
       // Mock task execution
       mockExecSubAgentTask.mockResolvedValueOnce({
@@ -74,7 +73,10 @@ describe('exec_sub_agents executor', () => {
       expect(payload.results).toHaveLength(1);
       expect(payload.results[0].success).toBe(true);
       expect(payload.results[0].threadId).toBe('thread_1');
-      expect(payload.results[0].taskMessageId).toBe('task_msg_1');
+      expect(mockExecSubAgentTask).toHaveBeenCalledWith(
+        expect.objectContaining({ parentMessageId: 'msg_parent' }),
+      );
+      expect(mockStore.optimisticCreateMessage).not.toHaveBeenCalled();
     });
 
     it('should execute multiple tasks in parallel', async () => {
@@ -90,12 +92,6 @@ describe('exec_sub_agents executor', () => {
         'msg_parent',
       );
       const state = createInitialState({ operationId: 'test-op' });
-
-      // Mock task message creation for each task
-      (mockStore.optimisticCreateMessage as Mock)
-        .mockResolvedValueOnce({ id: 'task_msg_1' })
-        .mockResolvedValueOnce({ id: 'task_msg_2' })
-        .mockResolvedValueOnce({ id: 'task_msg_3' });
 
       // Mock task execution for each task
       mockExecSubAgentTask
@@ -147,7 +143,7 @@ describe('exec_sub_agents executor', () => {
       // Given
       const mockStore = createMockStore();
       const context = createTestContext({ agentId: undefined, topicId: null });
-      const instruction = createExecSubAgentsInstruction();
+      const instruction = createExecSubAgentsInstruction([], 'msg_parent');
       const state = createInitialState({ operationId: 'test-op' });
 
       // Override operation context to have no agentId/topicId
@@ -182,40 +178,12 @@ describe('exec_sub_agents executor', () => {
       expect(payload.results[0].error).toBe('No valid context available');
     });
 
-    it('should handle task message creation failure', async () => {
-      // Given
-      const mockStore = createMockStore();
-      const context = createTestContext();
-      const instruction = createExecSubAgentsInstruction();
-      const state = createInitialState({ operationId: 'test-op' });
-
-      // Mock task message creation failure
-      (mockStore.optimisticCreateMessage as Mock).mockResolvedValueOnce(null);
-
-      // When
-      const result = await executeWithMockContext({
-        context,
-        executor: 'exec_sub_agents',
-        instruction,
-        mockStore,
-        state,
-      });
-
-      // Then
-      const payload = (result.nextContext as AgentRuntimeContext)
-        .payload as SubAgentsBatchResultPayload;
-      expect(payload.results[0].success).toBe(false);
-      expect(payload.results[0].error).toBe('Failed to create task message');
-    });
-
     it('should handle task creation API failure', async () => {
       // Given
       const mockStore = createMockStore();
       const context = createTestContext();
-      const instruction = createExecSubAgentsInstruction();
+      const instruction = createExecSubAgentsInstruction([], 'msg_parent');
       const state = createInitialState({ operationId: 'test-op' });
-
-      (mockStore.optimisticCreateMessage as Mock).mockResolvedValueOnce({ id: 'task_msg_1' });
 
       mockExecSubAgentTask.mockResolvedValueOnce({
         assistantMessageId: '',
@@ -239,11 +207,13 @@ describe('exec_sub_agents executor', () => {
         .payload as SubAgentsBatchResultPayload;
       expect(payload.results[0].success).toBe(false);
       expect(payload.results[0].error).toBe('API error');
-      expect(mockStore.optimisticUpdateMessageContent).toHaveBeenCalledWith(
-        'task_msg_1',
-        'Task creation failed: API error',
-        undefined,
-        { operationId: 'test-op' },
+      expect(mockStore.internal_dispatchMessage).toHaveBeenCalledWith(
+        {
+          id: 'msg_parent',
+          type: 'updateMessage',
+          value: { content: '1. Test task\nFailed: API error' },
+        },
+        { operationId: 'op_test' },
       );
     });
 
@@ -251,10 +221,8 @@ describe('exec_sub_agents executor', () => {
       // Given
       const mockStore = createMockStore();
       const context = createTestContext();
-      const instruction = createExecSubAgentsInstruction();
+      const instruction = createExecSubAgentsInstruction([], 'msg_parent');
       const state = createInitialState({ operationId: 'test-op' });
-
-      (mockStore.optimisticCreateMessage as Mock).mockResolvedValueOnce({ id: 'task_msg_1' });
 
       mockExecSubAgentTask.mockResolvedValueOnce({
         assistantMessageId: 'asst_1',
@@ -286,14 +254,12 @@ describe('exec_sub_agents executor', () => {
   });
 
   describe('Task Status Polling', () => {
-    it('should update task message with taskDetail when completed', async () => {
+    it('should update the source tool message with taskDetail when completed', async () => {
       // Given
       const mockStore = createMockStore();
       const context = createTestContext();
-      const instruction = createExecSubAgentsInstruction();
+      const instruction = createExecSubAgentsInstruction([], 'msg_parent');
       const state = createInitialState({ operationId: 'test-op' });
-
-      (mockStore.optimisticCreateMessage as Mock).mockResolvedValueOnce({ id: 'task_msg_1' });
 
       mockExecSubAgentTask.mockResolvedValueOnce({
         assistantMessageId: 'asst_1',
@@ -321,11 +287,11 @@ describe('exec_sub_agents executor', () => {
       // Then
       expect(mockStore.internal_dispatchMessage).toHaveBeenCalledWith(
         {
-          id: 'task_msg_1',
+          id: 'msg_parent',
           type: 'updateMessage',
           value: { taskDetail: { status: 'completed' } },
         },
-        { operationId: 'test-op' },
+        { operationId: 'op_test' },
       );
       const payload = (result.nextContext as AgentRuntimeContext)
         .payload as SubAgentsBatchResultPayload;
@@ -336,10 +302,8 @@ describe('exec_sub_agents executor', () => {
       // Given
       const mockStore = createMockStore();
       const context = createTestContext();
-      const instruction = createExecSubAgentsInstruction();
+      const instruction = createExecSubAgentsInstruction([], 'msg_parent');
       const state = createInitialState({ operationId: 'test-op' });
-
-      (mockStore.optimisticCreateMessage as Mock).mockResolvedValueOnce({ id: 'task_msg_1' });
 
       mockExecSubAgentTask.mockResolvedValueOnce({
         assistantMessageId: 'asst_1',
@@ -367,11 +331,13 @@ describe('exec_sub_agents executor', () => {
         .payload as SubAgentsBatchResultPayload;
       expect(payload.results[0].success).toBe(false);
       expect(payload.results[0].error).toBe('Task was cancelled');
-      expect(mockStore.optimisticUpdateMessageContent).toHaveBeenCalledWith(
-        'task_msg_1',
-        'Task was cancelled',
-        undefined,
-        { operationId: 'test-op' },
+      expect(mockStore.internal_dispatchMessage).toHaveBeenCalledWith(
+        {
+          id: 'msg_parent',
+          type: 'updateMessage',
+          value: { content: '1. Test task\nFailed: Task was cancelled' },
+        },
+        { operationId: 'op_test' },
       );
     });
   });
@@ -383,10 +349,8 @@ describe('exec_sub_agents executor', () => {
       // Use same operationId for both context and state
       const operationId = 'test-op';
       const context = createTestContext({ operationId });
-      const instruction = createExecSubAgentsInstruction();
+      const instruction = createExecSubAgentsInstruction([], 'msg_parent');
       const state = createInitialState({ operationId });
-
-      (mockStore.optimisticCreateMessage as Mock).mockResolvedValueOnce({ id: 'task_msg_1' });
 
       // Mock execSubAgentTask to mark operation as cancelled after it's called
       // This simulates cancellation happening right after task creation but before polling
@@ -419,6 +383,7 @@ describe('exec_sub_agents executor', () => {
       expect(payload.results[0].error).toBe('Operation cancelled');
       // getSubAgentTaskStatus should not be called since operation was cancelled before poll
       expect(mockGetSubAgentTaskStatus).not.toHaveBeenCalled();
+      expect(mockInterruptTask).toHaveBeenCalledWith({ threadId: 'thread_1' });
     });
   });
 
@@ -432,8 +397,6 @@ describe('exec_sub_agents executor', () => {
         'msg_parent',
       );
       const state = createInitialState({ operationId: 'test-op', stepCount: 5 });
-
-      (mockStore.optimisticCreateMessage as Mock).mockResolvedValueOnce({ id: 'task_msg_1' });
 
       mockExecSubAgentTask.mockResolvedValueOnce({
         assistantMessageId: 'asst_1',
@@ -471,13 +434,11 @@ describe('exec_sub_agents executor', () => {
       // Given
       const mockStore = createMockStore();
       const context = createTestContext();
-      const instruction = createExecSubAgentsInstruction();
+      const instruction = createExecSubAgentsInstruction([], 'msg_parent');
       const state = createInitialState({ messages: [], operationId: 'test-op' });
 
       const updatedMessages = [{ content: 'test', id: 'msg_1', role: 'user' }];
       mockStore.dbMessagesMap[context.messageKey] = updatedMessages as any;
-
-      (mockStore.optimisticCreateMessage as Mock).mockResolvedValueOnce({ id: 'task_msg_1' });
 
       mockExecSubAgentTask.mockResolvedValueOnce({
         assistantMessageId: 'asst_1',
@@ -505,56 +466,6 @@ describe('exec_sub_agents executor', () => {
     });
   });
 
-  describe('Task Message Creation', () => {
-    it('should create task message with correct parameters', async () => {
-      // Given
-      const mockStore = createMockStore();
-      const context = createTestContext({ agentId: 'agent_1', topicId: 'topic_1' });
-      const instruction = createExecSubAgentsInstruction(
-        [{ description: 'Test task', instruction: 'Do something important' }],
-        'msg_parent',
-      );
-      const state = createInitialState({ operationId: 'test-op' });
-
-      (mockStore.optimisticCreateMessage as Mock).mockResolvedValueOnce({ id: 'task_msg_1' });
-
-      mockExecSubAgentTask.mockResolvedValueOnce({
-        assistantMessageId: 'asst_1',
-        operationId: 'op_1',
-        success: true,
-        threadId: 'thread_1',
-      });
-
-      mockGetSubAgentTaskStatus.mockResolvedValueOnce({
-        result: 'Done',
-        status: 'completed',
-      });
-
-      // When
-      await executeWithMockContext({
-        context,
-        executor: 'exec_sub_agents',
-        instruction,
-        mockStore,
-        state,
-      });
-
-      // Then
-      expect(mockStore.optimisticCreateMessage).toHaveBeenCalledWith(
-        {
-          agentId: 'agent_1',
-          content: '',
-          createdAt: expect.any(Number),
-          metadata: { instruction: 'Do something important' },
-          parentId: 'msg_parent',
-          role: 'task',
-          topicId: 'topic_1',
-        },
-        { operationId: 'test-op' },
-      );
-    });
-  });
-
   describe('Mixed Results', () => {
     it('should handle mix of successful and failed tasks', async () => {
       // Given
@@ -568,10 +479,6 @@ describe('exec_sub_agents executor', () => {
         'msg_parent',
       );
       const state = createInitialState({ operationId: 'test-op' });
-
-      (mockStore.optimisticCreateMessage as Mock)
-        .mockResolvedValueOnce({ id: 'task_msg_1' })
-        .mockResolvedValueOnce({ id: 'task_msg_2' });
 
       mockExecSubAgentTask
         .mockResolvedValueOnce({

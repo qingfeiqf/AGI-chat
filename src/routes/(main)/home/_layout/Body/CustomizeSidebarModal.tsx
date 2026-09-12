@@ -18,7 +18,8 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ActionIcon, Button, Flexbox, Icon, Text, Tooltip } from '@lobehub/ui';
+import { Flexbox, Icon, Tooltip } from '@lobehub/ui';
+import { ActionIcon, Button, Text } from '@lobehub/ui/base-ui';
 import { createModal, type ModalInstance } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cssVar, cx } from 'antd-style';
 import { t } from 'i18next';
@@ -27,6 +28,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import { useActiveWorkspaceSlug } from '@/business/client/hooks/useActiveWorkspaceSlug';
 import { getRouteById } from '@/config/routes';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
@@ -38,7 +40,7 @@ import { SIDEBAR_ACCORDION_KEYS, SIDEBAR_SPACER_ID } from '@/store/global/select
 
 const ACCORDION_GROUP_ID = 'accordion-group';
 
-interface SidebarItemConfig {
+export interface SidebarItemConfig {
   alwaysVisible?: boolean;
   id: string;
   labelKey: string;
@@ -49,6 +51,7 @@ const ALL_SIDEBAR_ITEMS: SidebarItemConfig[] = [
   { id: 'tasks', labelKey: 'tab.tasks', routeId: 'tasks' },
   { id: 'pages', labelKey: 'tab.pages', routeId: 'page' },
   { id: 'recents', labelKey: 'recents' },
+  { id: 'private', labelKey: 'navPanel.privateAgents' },
   { alwaysVisible: true, id: 'agent', labelKey: 'navPanel.agent' },
   { id: 'image', labelKey: 'tab.generation', routeId: 'image' },
   { id: 'community', labelKey: 'tab.community', routeId: 'community' },
@@ -57,6 +60,19 @@ const ALL_SIDEBAR_ITEMS: SidebarItemConfig[] = [
 ];
 
 const ITEM_MAP = new Map(ALL_SIDEBAR_ITEMS.map((item) => [item.id, item]));
+
+// Private is workspace-only; in personal mode every row is implicitly
+// owner-private, so hide it from the customizer where toggling it on
+// would render an empty accordion no user can populate.
+export const getAvailableSidebarItems = (isWorkspaceMode: boolean): SidebarItemConfig[] =>
+  ALL_SIDEBAR_ITEMS.filter((item) => {
+    if (isWorkspaceMode && item.id === 'memory') return false;
+    if (!isWorkspaceMode && item.id === 'private') return false;
+    return true;
+  });
+
+export const getSortableSidebarItemIds = (isWorkspaceMode: boolean): Set<string> =>
+  new Set([...getAvailableSidebarItems(isWorkspaceMode).map((item) => item.id), SIDEBAR_SPACER_ID]);
 
 const isAccordionKey = (id: string) => SIDEBAR_ACCORDION_KEYS.has(id);
 
@@ -382,6 +398,15 @@ const CustomizeSidebarContent = memo(() => {
     systemStatusSelectors.hiddenSidebarSections(s),
     s.updateSystemStatus,
   ]);
+  const isWorkspaceMode = !!useActiveWorkspaceSlug();
+  const sortableItemIds = useMemo(
+    () => getSortableSidebarItemIds(isWorkspaceMode),
+    [isWorkspaceMode],
+  );
+  const availableStoreItems = useMemo(
+    () => storeItems.filter((id) => sortableItemIds.has(id)),
+    [storeItems, sortableItemIds],
+  );
 
   // Local state for drag operations — only persisted on dragEnd
   const [topItems, setTopItems] = useState<string[]>([]);
@@ -389,10 +414,10 @@ const CustomizeSidebarContent = memo(() => {
 
   // Sync local state when store changes (e.g. reset)
   useEffect(() => {
-    const { top, bottom } = splitBySpacer(storeItems);
+    const { top, bottom } = splitBySpacer(availableStoreItems);
     setTopItems(top);
     setBottomItems(bottom);
-  }, [storeItems]);
+  }, [availableStoreItems]);
 
   const toggleSection = useCallback(
     (key: string) => {

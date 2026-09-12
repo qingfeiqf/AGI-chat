@@ -1,6 +1,7 @@
 'use client';
 
-import { Button, Flexbox, Popover, Skeleton, Text } from '@lobehub/ui';
+import { Flexbox, Popover, Skeleton, Text } from '@lobehub/ui';
+import { Button } from '@lobehub/ui/base-ui';
 import { Discord, Slack, Telegram } from '@lobehub/ui/icons';
 import { Divider, QRCode } from 'antd';
 import { createStaticStyles } from 'antd-style';
@@ -9,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 
 import { buildTelegramDeepLink, PlatformAvatar } from '@/features/Messenger/constants';
+import { messengerKeys } from '@/libs/swr/keys';
 import { messengerService } from '@/services/messenger';
 
 const SLACK_INSTALL_HREF = '/api/agent/messenger/slack/install';
@@ -66,7 +68,7 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
 const MessengerIntegrations = memo(() => {
   const { t } = useTranslation('onboarding');
 
-  const { data, isLoading } = useSWR('messenger:availablePlatforms', () =>
+  const { data, isLoading } = useSWR(messengerKeys.availablePlatforms(), () =>
     messengerService.availablePlatforms(),
   );
 

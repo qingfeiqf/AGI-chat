@@ -12,6 +12,8 @@ import { useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { MSG_CONTENT_CLASSNAME } from '@/features/Conversation/ChatItem/components/MessageContent';
+import { resolveHeteroErroredStepId } from '@/features/Conversation/Error/heterogeneous';
+import { usePermission } from '@/hooks/usePermission';
 import { useSessionStore } from '@/store/session';
 import { sessionSelectors } from '@/store/session/selectors';
 import { useUserStore } from '@/store/user';
@@ -54,6 +56,8 @@ export const useChatItemContextMenu = ({
   const contextMenuMode = useUserStore(userGeneralSettingsSelectors.contextMenuMode);
   const { message } = App.useApp();
   const { t } = useTranslation('common');
+  const { allowed: canCreate } = usePermission('create_content');
+  const { allowed: canEdit } = usePermission('edit_own_content');
 
   const selectedTextRef = useRef<string | undefined>(undefined);
 
@@ -89,6 +93,7 @@ export const useChatItemContextMenu = ({
     resendThreadMessage,
     delAndResendThreadMessage,
     toggleMessageCollapsed,
+    deleteAssistantMessage,
   ] = useConversationStore((s) => [
     s.toggleMessageEditing,
     s.deleteMessage,
@@ -102,6 +107,7 @@ export const useChatItemContextMenu = ({
     s.resendThreadMessage,
     s.delAndResendThreadMessage,
     s.toggleMessageCollapsed,
+    s.deleteAssistantMessage,
   ]);
 
   const getMessage = useCallback(
@@ -127,9 +133,27 @@ export const useChatItemContextMenu = ({
       tts,
     } = actionsBar;
 
+    const withPermission = (items: MenuItem[]) =>
+      !canEdit
+        ? items.filter((item) => 'key' in item && item.key === 'copy')
+        : items.map((item) => {
+            if ('type' in item && item.type === 'divider') return item;
+            if (['edit', 'del'].includes(String(item.key))) return { ...item, disabled: !canEdit };
+            if (
+              ['branching', 'delAndRegenerate', 'regenerate', 'translate', 'tts'].includes(
+                String(item.key),
+              )
+            ) {
+              return { ...item, disabled: !canCreate };
+            }
+            return item;
+          });
+
     if (role === 'assistant') {
       if (error) {
-        return [edit, copy, divider, del, divider, regenerate].filter(Boolean) as MenuItem[];
+        return withPermission(
+          [edit, copy, divider, del, divider, regenerate].filter(Boolean) as MenuItem[],
+        );
       }
 
       const collapseAction = isCollapsed ? expand : collapse;
@@ -149,12 +173,14 @@ export const useChatItemContextMenu = ({
         del,
       );
 
-      return list.filter(Boolean) as MenuItem[];
+      return withPermission(list.filter(Boolean) as MenuItem[]);
     }
 
     if (role === 'assistantGroup') {
       if (error) {
-        return [edit, copy, divider, del, divider, regenerate].filter(Boolean) as MenuItem[];
+        return withPermission(
+          [edit, copy, divider, del, divider, regenerate].filter(Boolean) as MenuItem[],
+        );
       }
 
       const collapseAction = isCollapsed ? expand : collapse;
@@ -169,7 +195,7 @@ export const useChatItemContextMenu = ({
         del,
       ];
 
-      return list.filter(Boolean) as MenuItem[];
+      return withPermission(list.filter(Boolean) as MenuItem[]);
     }
 
     if (role === 'user') {
@@ -179,11 +205,21 @@ export const useChatItemContextMenu = ({
 
       list.push(divider, tts, translate, divider, regenerate, del);
 
-      return list.filter(Boolean) as MenuItem[];
+      return withPermission(list.filter(Boolean) as MenuItem[]);
     }
 
     return [];
-  }, [actionsBar, error, inThread, isCollapsed, isDevMode, isGroupSession, role]);
+  }, [
+    actionsBar,
+    canCreate,
+    canEdit,
+    error,
+    inThread,
+    isCollapsed,
+    isDevMode,
+    isGroupSession,
+    role,
+  ]);
 
   const handleShare = useCallback(() => {
     const item = getMessage();
@@ -218,6 +254,7 @@ export const useChatItemContextMenu = ({
 
       switch (action.key) {
         case 'edit': {
+          if (!canEdit) break;
           toggleMessageEditing(id, true);
           break;
         }
@@ -228,10 +265,12 @@ export const useChatItemContextMenu = ({
         }
         case 'expand':
         case 'collapse': {
+          if (!canEdit) break;
           toggleMessageCollapsed(id);
           break;
         }
         case 'branching': {
+          if (!canCreate) break;
           if (!topic) {
             message.warning(t('branchingRequiresSavedTopic'));
             break;
@@ -240,10 +279,16 @@ export const useChatItemContextMenu = ({
           break;
         }
         case 'del': {
-          deleteMessage(id);
+          if (!canEdit) break;
+          // Mirrors the action bar's `del`: on a heterogeneous run that only
+          // failed on its tail step, drop that step instead of the whole run.
+          const erroredStepId = resolveHeteroErroredStepId(item);
+          if (erroredStepId) deleteAssistantMessage(erroredStepId);
+          else deleteMessage(id);
           break;
         }
         case 'regenerate': {
+          if (!canCreate) break;
           if (inPortalThread) {
             resendThreadMessage(id);
           } else if (role === 'assistant') {
@@ -256,6 +301,7 @@ export const useChatItemContextMenu = ({
           break;
         }
         case 'delAndRegenerate': {
+          if (!canCreate) break;
           if (inPortalThread) {
             delAndResendThreadMessage(id);
           } else {
@@ -264,22 +310,28 @@ export const useChatItemContextMenu = ({
           break;
         }
         case 'tts': {
+          if (!canCreate) break;
           ttsMessage(id);
           break;
         }
         case 'share': {
+          if (!canEdit) break;
           handleShare();
           break;
         }
       }
 
       if (action.keyPath?.[0] === 'translate') {
+        if (!canCreate) return;
         const lang = action.keyPath.at(-1);
         if (lang) translateMessage(id, lang);
       }
     },
     [
       copyMessage,
+      canCreate,
+      canEdit,
+      deleteAssistantMessage,
       deleteMessage,
       delAndRegenerateMessage,
       delAndResendThreadMessage,

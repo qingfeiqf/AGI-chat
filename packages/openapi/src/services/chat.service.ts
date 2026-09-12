@@ -1,4 +1,5 @@
 import type { ChatStreamPayload } from '@lobechat/model-runtime';
+import { mergeModelRuntimeHooks } from '@lobechat/model-runtime';
 import type { LobeAgentChatConfig, LobeAgentConfig, UserSystemAgentConfig } from '@lobechat/types';
 import { RequestTrigger } from '@lobechat/types';
 import { and, eq } from 'drizzle-orm';
@@ -6,10 +7,11 @@ import { and, eq } from 'drizzle-orm';
 import { getBusinessModelRuntimeHooks } from '@/business/server/model-runtime';
 import { DEFAULT_AGENT_CHAT_CONFIG, DEFAULT_SYSTEM_AGENT_CONFIG } from '@/const/settings';
 import { UserModel } from '@/database/models/user';
-import { agents, agentsToSessions, aiModels } from '@/database/schemas';
+import { agents, agentsToSessions, aiModels, aiProviders } from '@/database/schemas';
 import type { LobeChatDatabase } from '@/database/type';
 import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import { initModelRuntimeWithUserPayload } from '@/server/modules/ModelRuntime';
+import { createLLMGenerationTracingHook } from '@/server/services/llmGenerationTracing/hook';
 import { resolveSystemAgentModelConfig } from '@/server/services/systemAgent/modelConfig';
 
 import { BaseService } from '../common/base.service';
@@ -29,13 +31,21 @@ import type {
 export class ChatService extends BaseService {
   private config: ChatServiceConfig;
 
-  constructor(db: LobeChatDatabase, userId: string | null, config?: ChatServiceConfig) {
-    super(db, userId);
+  constructor(
+    db: LobeChatDatabase,
+    userId: string | null,
+    workspaceIdOrConfig?: string | ChatServiceConfig,
+    config?: ChatServiceConfig,
+  ) {
+    const workspaceId = typeof workspaceIdOrConfig === 'string' ? workspaceIdOrConfig : undefined;
+    const serviceConfig = typeof workspaceIdOrConfig === 'string' ? config : workspaceIdOrConfig;
+
+    super(db, userId, workspaceId);
     this.config = {
       defaultModel: 'gpt-3.5-turbo',
       defaultProvider: 'openai',
       timeout: 30_000,
-      ...config,
+      ...serviceConfig,
     };
   }
 
@@ -117,7 +127,7 @@ export class ChatService extends BaseService {
   private async getAgentConfig(agentId: string): Promise<LobeAgentChatConfig | null> {
     try {
       const agent = await this.db.query.agents.findFirst({
-        where: (agents, { eq, and }) => and(eq(agents.id, agentId)),
+        where: and(eq(agents.id, agentId), this.buildWorkspaceWhere(agents)),
       });
 
       return agent?.chatConfig || null;
@@ -173,8 +183,7 @@ export class ChatService extends BaseService {
     const gateKeeper = await KeyVaultsGateKeeper.initWithEnvKey();
 
     const aiProviderConfigs = await this.db.query.aiProviders.findMany({
-      where: (aiProviders, { eq, and }) =>
-        and(eq(aiProviders.userId, this.userId!), eq(aiProviders.id, provider)),
+      where: and(eq(aiProviders.id, provider), this.buildWorkspaceWhere(aiProviders)),
     });
 
     if (!aiProviderConfigs || aiProviderConfigs.length === 0) {
@@ -319,8 +328,12 @@ export class ChatService extends BaseService {
     try {
       const { apiKey } = JSON.parse(await this.getApiKey(provider));
 
-      // Create AgentRuntime instance
-      const hooks = getBusinessModelRuntimeHooks(this.userId!, provider);
+      // Create AgentRuntime instance. Pass workspaceId so workspace-key calls
+      // bill the workspace budget (not the key creator's personal budget) and
+      // trace under the workspace, matching initModelRuntimeFromDB.
+      const businessHooks = getBusinessModelRuntimeHooks(this.userId!, provider, this.workspaceId);
+      const tracingHooks = createLLMGenerationTracingHook(this.userId!, provider, this.workspaceId);
+      const hooks = mergeModelRuntimeHooks(businessHooks, tracingHooks);
       const modelRuntime = await initModelRuntimeWithUserPayload(
         provider,
         { apiKey, userId: this.userId! },
@@ -630,7 +643,12 @@ export class ChatService extends BaseService {
               eq(agents.provider, aiModels.providerId), // Ensure provider also matches
             ),
           )
-          .where(and(eq(agentsToSessions.sessionId, params.sessionId!)));
+          .where(
+            and(
+              eq(agentsToSessions.sessionId, params.sessionId!),
+              this.buildWorkspaceWhere(agentsToSessions),
+            ),
+          );
 
         if (!agentAndModel.length) {
           this.log('warn', '会话对应的模型配置不存在', {
@@ -650,7 +668,10 @@ export class ChatService extends BaseService {
 
         // Find the agent corresponding to the session
         const agentToSession = await this.db.query.agentsToSessions.findFirst({
-          where: (agentsToSessions, { eq }) => eq(agentsToSessions.sessionId, params.sessionId!),
+          where: and(
+            eq(agentsToSessions.sessionId, params.sessionId!),
+            this.buildWorkspaceWhere(agentsToSessions),
+          ),
         });
 
         if (!agentToSession) {

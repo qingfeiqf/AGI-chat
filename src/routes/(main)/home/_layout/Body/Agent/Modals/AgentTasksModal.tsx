@@ -1,7 +1,8 @@
 'use client';
 
-import { Button, Flexbox, Modal } from '@lobehub/ui';
-import { createStyles } from 'antd-style';
+import { Flexbox } from '@lobehub/ui';
+import { Button, Modal } from '@lobehub/ui/base-ui';
+import { createStaticStyles } from 'antd-style';
 import { memo, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -17,7 +18,7 @@ import { systemStatusSelectors } from '@/store/global/selectors';
 import { useTaskStore } from '@/store/task';
 import { taskListSelectors } from '@/store/task/selectors';
 
-const useStyles = createStyles(({ css, cssVar }) => ({
+const styles = createStaticStyles(({ css, cssVar }) => ({
   contentWrapper: css`
     overflow: hidden auto;
 
@@ -40,7 +41,6 @@ interface AgentTasksModalProps {
 }
 
 const AgentTasksModal = memo<AgentTasksModalProps>(({ agentId, open, onCancel }) => {
-  const { styles } = useStyles();
   const { t } = useTranslation('common');
 
   // Fetch task lists for this specific agent

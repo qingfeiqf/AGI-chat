@@ -1,5 +1,5 @@
 import { DEFAULT_AVATAR } from '@lobechat/const';
-import { Avatar } from '@lobehub/ui';
+import { Avatar } from '@lobehub/ui/base-ui';
 import { memo } from 'react';
 
 interface AgentAvatarProps {

@@ -1,9 +1,11 @@
+import { AGENT_CHAT_URL } from '@lobechat/const';
 import { produce } from 'immer';
 
+import { getActiveWorkspaceId } from '@/business/client/hooks/useActiveWorkspaceId';
 import { INBOX_SESSION_ID } from '@/const/session';
-import { SESSION_CHAT_URL } from '@/const/url';
 import type { GlobalStore } from '@/store/global';
 import type { ModelDetailPanelExpandedKey, WorkingSidebarTab } from '@/store/global/initialState';
+import { readOverridableField } from '@/store/global/selectors/systemStatus';
 import type { StoreSetter } from '@/store/types';
 import { getStableNavigate } from '@/utils/stableNavigate';
 import { setNamespace } from '@/utils/storeDebug';
@@ -24,7 +26,7 @@ export class GlobalWorkspacePaneActionImpl {
   }
 
   switchBackToChat = (sessionId?: string): void => {
-    const target = SESSION_CHAT_URL(sessionId || INBOX_SESSION_ID, this.#get().isMobile);
+    const target = AGENT_CHAT_URL(sessionId || INBOX_SESSION_ID, this.#get().isMobile);
     getStableNavigate()?.(target);
   };
 
@@ -63,7 +65,11 @@ export class GlobalWorkspacePaneActionImpl {
 
   toggleExpandSessionGroup = (id: string, expand: boolean): void => {
     const { status } = this.#get();
-    const nextExpandSessionGroup = produce(status.expandSessionGroupKeys, (draft: string[]) => {
+    // Read the effective (overlay-aware) value so workspace-mode toggles compose
+    // off the workspace list, not the personal one underneath it.
+    const currentKeys =
+      readOverridableField(status, 'expandSessionGroupKeys', getActiveWorkspaceId()) ?? [];
+    const nextExpandSessionGroup = produce(currentKeys, (draft: string[]) => {
       if (expand) {
         if (draft.includes(id)) return;
         draft.push(id);
@@ -126,6 +132,13 @@ export class GlobalWorkspacePaneActionImpl {
     this.#get().updateSystemStatus({ showRightPanel }, n('toggleRightPanel', newValue));
   };
 
+  toggleTerminalPanel = (newValue?: boolean): void => {
+    const showTerminalPanel =
+      typeof newValue === 'boolean' ? newValue : !this.#get().status.showTerminalPanel;
+
+    this.#get().updateSystemStatus({ showTerminalPanel }, n('toggleTerminalPanel', newValue));
+  };
+
   toggleSystemRole = (newValue?: boolean): void => {
     const showSystemRole =
       typeof newValue === 'boolean' ? newValue : !this.#get().status.mobileShowTopic;
@@ -146,18 +159,34 @@ export class GlobalWorkspacePaneActionImpl {
     );
   };
 
+  openInBrowserTab = (url: string): void => {
+    this.#get().toggleRightPanel(true);
+    this.#get().setWorkingSidebarTab('browser');
+    this.#get().updateSystemStatus(
+      { workingSidebarBrowserRequest: { nonce: Date.now(), url } },
+      n('openInBrowserTab'),
+    );
+  };
+
+  /**
+   * Retire the request as soon as the browser pane has acted on it. Without
+   * this, the request survives in persisted status and every later remount of
+   * the pane — which now happens on each topic switch, since the session key is
+   * per-topic — would navigate that topic's page to the stale URL.
+   */
+  clearBrowserTabRequest = (): void => {
+    if (!this.#get().status.workingSidebarBrowserRequest) return;
+    this.#get().updateSystemStatus(
+      { workingSidebarBrowserRequest: null },
+      n('clearBrowserTabRequest'),
+    );
+  };
+
   toggleWideScreen = (newValue?: boolean): void => {
     const noWideScreen =
       typeof newValue === 'boolean' ? !newValue : !this.#get().status.noWideScreen;
 
     this.#get().updateSystemStatus({ noWideScreen }, n('toggleWideScreen', newValue));
-  };
-
-  toggleZenMode = (): void => {
-    const { status } = this.#get();
-    const nextZenMode = !status.zenMode;
-
-    this.#get().updateSystemStatus({ zenMode: nextZenMode }, n('toggleZenMode'));
   };
 
   updateModelDetailPanelExpandedKeys = (keys: ModelDetailPanelExpandedKey[]): void => {

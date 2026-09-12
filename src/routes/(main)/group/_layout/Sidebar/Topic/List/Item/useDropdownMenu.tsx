@@ -1,10 +1,11 @@
+import { GROUP_CHAT_TOPIC_URL } from '@lobechat/const';
 import type { ChatTopicStatus } from '@lobechat/types';
 import { type MenuProps } from '@lobehub/ui';
 import { Icon } from '@lobehub/ui';
 import { App } from 'antd';
 import {
-  CheckCircle2,
-  Circle,
+  Archive,
+  ArchiveRestore,
   ExternalLink,
   Hash,
   Link2,
@@ -16,10 +17,14 @@ import {
 } from 'lucide-react';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 
+import { useActiveWorkspaceSlug } from '@/business/client/hooks/useActiveWorkspaceSlug';
 import { isDesktop } from '@/const/version';
+import { confirmRemoveTopic } from '@/features/DeleteTopicConfirm';
+import { useWorkspaceAwareNavigate } from '@/features/Workspace/useWorkspaceAwareNavigate';
+import { buildWorkspaceAwarePath } from '@/features/Workspace/workspaceAwarePath';
 import { useAppOrigin } from '@/hooks/useAppOrigin';
+import { usePermission } from '@/hooks/usePermission';
 import { useAgentGroupStore } from '@/store/agentGroup';
 import { useChatStore } from '@/store/chat';
 import { useElectronStore } from '@/store/electron';
@@ -37,8 +42,11 @@ export const useTopicItemDropdownMenu = ({
   toggleEditing,
 }: TopicItemDropdownMenuProps): (() => MenuProps['items']) => {
   const { t } = useTranslation(['topic', 'common']);
-  const { modal, message } = App.useApp();
-  const navigate = useNavigate();
+  const { message } = App.useApp();
+  const navigate = useWorkspaceAwareNavigate();
+  const activeWorkspaceSlug = useActiveWorkspaceSlug();
+  const { allowed: canCreateTopic } = usePermission('create_content');
+  const { allowed: canEditTopic } = usePermission('edit_own_content');
 
   const openGroupTopicInNewWindow = useGlobalStore((s) => s.openGroupTopicInNewWindow);
   const activeGroupId = useAgentGroupStore((s) => s.activeGroupId);
@@ -66,7 +74,8 @@ export const useTopicItemDropdownMenu = ({
 
     return [
       {
-        icon: <Icon icon={isCompleted ? Circle : CheckCircle2} />,
+        disabled: !canEditTopic,
+        icon: <Icon icon={isCompleted ? ArchiveRestore : Archive} />,
         key: 'markCompleted',
         label: isCompleted ? t('actions.unmarkCompleted') : t('actions.markCompleted'),
         onClick: () => {
@@ -81,6 +90,7 @@ export const useTopicItemDropdownMenu = ({
         type: 'divider' as const,
       },
       {
+        disabled: !canEditTopic,
         icon: <Icon icon={Wand2} />,
         key: 'autoRename',
         label: t('actions.autoRename'),
@@ -89,6 +99,7 @@ export const useTopicItemDropdownMenu = ({
         },
       },
       {
+        disabled: !canEditTopic,
         icon: <Icon icon={PencilLine} />,
         key: 'rename',
         label: t('rename', { ns: 'common' }),
@@ -107,9 +118,12 @@ export const useTopicItemDropdownMenu = ({
               label: t('actions.openInNewTab'),
               onClick: () => {
                 if (!activeGroupId) return;
-                const url = `/group/${activeGroupId}?topic=${id}`;
+                const url = buildWorkspaceAwarePath(
+                  GROUP_CHAT_TOPIC_URL(activeGroupId, id),
+                  activeWorkspaceSlug,
+                );
                 addTab(url);
-                navigate(url);
+                navigate(url, { escape: true });
               },
             },
             {
@@ -140,12 +154,13 @@ export const useTopicItemDropdownMenu = ({
         label: t('actions.copyLink'),
         onClick: () => {
           if (!activeGroupId) return;
-          const url = `${appOrigin}/group/${activeGroupId}?topic=${id}`;
+          const url = `${appOrigin}${GROUP_CHAT_TOPIC_URL(activeGroupId, id)}`;
           navigator.clipboard.writeText(url);
           message.success(t('actions.copyLinkSuccess'));
         },
       },
       {
+        disabled: !canCreateTopic,
         icon: <Icon icon={LucideCopy} />,
         key: 'duplicate',
         label: t('actions.duplicate'),
@@ -158,17 +173,16 @@ export const useTopicItemDropdownMenu = ({
       },
       {
         danger: true,
+        disabled: !canEditTopic,
         icon: <Icon icon={Trash} />,
         key: 'delete',
         label: t('delete', { ns: 'common' }),
         onClick: () => {
-          modal.confirm({
-            centered: true,
-            okButtonProps: { danger: true },
-            onOk: async () => {
-              await removeTopic(id);
+          void confirmRemoveTopic({
+            onConfirm: async (removeFiles) => {
+              await removeTopic(id, removeFiles);
             },
-            title: t('actions.confirmRemoveTopic'),
+            topicIds: [id],
           });
         },
       },
@@ -176,7 +190,10 @@ export const useTopicItemDropdownMenu = ({
   }, [
     id,
     isCompleted,
+    canCreateTopic,
+    canEditTopic,
     activeGroupId,
+    activeWorkspaceSlug,
     appOrigin,
     autoRenameTopicTitle,
     duplicateTopic,
@@ -188,7 +205,6 @@ export const useTopicItemDropdownMenu = ({
     navigate,
     toggleEditing,
     t,
-    modal,
     message,
   ]);
 };

@@ -19,6 +19,7 @@ import {
   useSetMessageItemActionElementPortialContext,
   useSetMessageItemActionTypeContext,
 } from '../Contexts/message-action-context';
+import MessageWorks from '../MessageWorks';
 import InterruptedHint from './components/InterruptedHint';
 import MessageContent from './components/MessageContent';
 import { AssistantMessageExtra } from './Extra';
@@ -66,14 +67,6 @@ const AssistantMessage = memo<AssistantMessageProps>(
 
     const errorContent = useErrorContent(error);
 
-    const shouldForceShowError =
-      error?.type === 'ProviderBizError' &&
-      (error?.body as any)?.provider === 'google' &&
-      !!(
-        (error?.body as any)?.context?.promptFeedback?.blockReason ||
-        (error?.body as any)?.context?.finishReason
-      );
-
     // remove line breaks in artifact tag to make the ast transform easier
     const message = !editing ? normalizeThinkTags(processWithArtifact(content)) : content;
 
@@ -105,7 +98,11 @@ const AssistantMessage = memo<AssistantMessageProps>(
         avatar={avatar}
         belowMessage={hasEmptyErrorMessage ? footerRender : undefined}
         customErrorRender={(error) => <ErrorMessageExtra data={item} error={error} />}
+        error={errorContent && error ? errorContent : undefined}
         editing={editing}
+        // ChatItem renders this as the primary block when the message is empty,
+        // or inside messageExtra (below the content) when the turn streamed
+        // content before erroring — so don't gate it on empty content.
         id={id}
         loading={generating || isCreating}
         message={message}
@@ -123,10 +120,10 @@ const AssistantMessage = memo<AssistantMessageProps>(
             {!disableEditing && actionBarHolder}
           </>
         }
-        error={
-          errorContent && error && (message === LOADING_FLAT || !message || shouldForceShowError)
-            ? errorContent
-            : undefined
+        afterActions={
+          metadata?.work?.rootOperationId ? (
+            <MessageWorks rootOperationId={metadata.work.rootOperationId} />
+          ) : undefined
         }
         messageExtra={
           <>

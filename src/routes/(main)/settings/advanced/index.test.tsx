@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -73,7 +73,7 @@ vi.mock('@/routes/(main)/settings/features/SettingHeader', () => ({
 
 vi.mock('@/services/electron/autoUpdate', () => ({
   autoUpdateService: {
-    getUpdateChannel: vi.fn().mockResolvedValue('stable'),
+    getUpdateChannel: vi.fn(() => new Promise(() => {})),
     setUpdateChannel: vi.fn(),
   },
 }));
@@ -89,6 +89,7 @@ const createWrapper = () => {
 const initialUserStoreState = useUserStore.getState();
 
 afterEach(() => {
+  cleanup();
   useUserStore.setState(initialUserStoreState, true);
 });
 
@@ -104,5 +105,41 @@ describe('Advanced settings page', () => {
 
     expect(screen.getByText('tab.advanced.toolsAndDiagnostics.title')).toBeDefined();
     expect(screen.getByText('tab.advanced.appUpdates.title')).toBeDefined();
+  });
+
+  it('renders the message text selection actions lab toggle', () => {
+    useUserStore.setState({
+      isUserStateInit: true,
+      setSettings: vi.fn(),
+      updateLab: vi.fn(),
+    });
+
+    render(<Page />, { wrapper: createWrapper() });
+
+    expect(screen.getByText('features.messageTextSelectionActions.title')).toBeDefined();
+  });
+
+  it('renders the OAuth Apps lab toggle', () => {
+    useUserStore.setState({
+      isUserStateInit: true,
+      setSettings: vi.fn(),
+      updateLab: vi.fn(),
+    });
+
+    render(<Page />, { wrapper: createWrapper() });
+
+    expect(screen.getByText('features.oauthApps.title')).toBeDefined();
+  });
+
+  it('does not render released task verify as a lab toggle', () => {
+    useUserStore.setState({
+      isUserStateInit: true,
+      setSettings: vi.fn(),
+      updateLab: vi.fn(),
+    });
+
+    render(<Page />, { wrapper: createWrapper() });
+
+    expect(screen.queryByText('features.taskVerify.title')).toBeNull();
   });
 });

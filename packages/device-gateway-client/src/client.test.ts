@@ -15,7 +15,10 @@ vi.mock('ws', async () => {
     static CLOSED = 3;
     readyState = 1; // OPEN
 
-    constructor(public url: string) {
+    constructor(
+      public url: string,
+      public options?: unknown,
+    ) {
       super();
       if (mockWsShouldThrow) {
         mockWsShouldThrow = false;
@@ -133,6 +136,32 @@ describe('GatewayClient', () => {
       expect(ws.url).toContain('userId=test-user');
     });
 
+    it('should include connectionId and channel in the URL when provided', () => {
+      const c = new GatewayClient({
+        autoReconnect: false,
+        channel: 'cli',
+        connectionId: 'conn-123',
+        deviceId: 'dev-1',
+        gatewayUrl: 'https://gateway.test.com',
+        token: 'tok',
+      });
+      c.connect();
+      const ws = (c as any).ws;
+      expect(ws.url).toContain('connectionId=conn-123');
+      expect(ws.url).toContain('channel=cli');
+      expect(c.currentConnectionId).toBe('conn-123');
+      c.disconnect();
+    });
+
+    it('should default connectionId to a generated UUID when omitted', () => {
+      const c = new GatewayClient({ autoReconnect: false, token: 'tok' });
+      c.connect();
+      const ws = (c as any).ws;
+      expect(ws.url).toContain(`connectionId=${c.currentConnectionId}`);
+      expect(ws.url).not.toContain('channel=');
+      c.disconnect();
+    });
+
     it('should build ws URL for http gateway', () => {
       const c = new GatewayClient({
         autoReconnect: false,
@@ -142,6 +171,21 @@ describe('GatewayClient', () => {
       c.connect();
       const ws = (c as any).ws;
       expect(ws.url).toContain('ws://localhost:3000/ws');
+      c.disconnect();
+    });
+
+    it('should include user agent header when provided', () => {
+      const c = new GatewayClient({
+        autoReconnect: false,
+        gatewayUrl: 'https://gateway.test.com',
+        token: 'tok',
+        userAgent: 'LobeHub Desktop/1.2.3',
+      });
+      c.connect();
+      const ws = (c as any).ws;
+      expect(ws.options).toEqual({
+        headers: { 'User-Agent': 'LobeHub Desktop/1.2.3' },
+      });
       c.disconnect();
     });
   });
@@ -232,6 +276,21 @@ describe('GatewayClient', () => {
       handler(JSON.stringify(msg));
 
       expect(sysInfoCb).toHaveBeenCalledWith(msg);
+    });
+
+    it('should handle rpc_request', () => {
+      const rpcCb = vi.fn();
+      client.on('rpc_request', rpcCb);
+
+      const msg = {
+        method: 'initWorkspace',
+        params: { scope: '/proj' },
+        requestId: 'req-rpc',
+        type: 'rpc_request',
+      };
+      handler(JSON.stringify(msg));
+
+      expect(rpcCb).toHaveBeenCalledWith(msg);
     });
 
     it('should handle auth_expired', () => {
@@ -336,6 +395,27 @@ describe('GatewayClient', () => {
       const sentData = JSON.parse(ws.send.mock.calls.at(-1)[0]);
       expect(sentData.type).toBe('system_info_response');
       expect(sentData.requestId).toBe('req-2');
+    });
+  });
+
+  describe('sendRpcResponse', () => {
+    it('should send rpc response message', async () => {
+      client.connect();
+      await vi.advanceTimersByTimeAsync(1);
+
+      const ws = (client as any).ws;
+      client.sendRpcResponse({
+        requestId: 'req-rpc',
+        result: { data: { skills: [] }, success: true },
+      });
+
+      expect(ws.send).toHaveBeenCalledWith(
+        JSON.stringify({
+          requestId: 'req-rpc',
+          result: { data: { skills: [] }, success: true },
+          type: 'rpc_response',
+        }),
+      );
     });
   });
 
